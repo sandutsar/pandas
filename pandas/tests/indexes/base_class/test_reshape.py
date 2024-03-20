@@ -1,6 +1,8 @@
 """
 Tests for ndarray-like method on the base Index class
 """
+
+import numpy as np
 import pytest
 
 from pandas import Index
@@ -17,7 +19,6 @@ class TestReshape:
         tm.assert_index_equal(result, expected)
 
     def test_insert(self):
-
         # GH 7256
         # validate neg/pos inserts
         result = Index(["b", "c", "d"])
@@ -33,13 +34,35 @@ class TestReshape:
 
         # test empty
         null_index = Index([])
-        tm.assert_index_equal(Index(["a"]), null_index.insert(0, "a"))
+        tm.assert_index_equal(Index(["a"], dtype=object), null_index.insert(0, "a"))
 
-    def test_insert_missing(self, nulls_fixture):
+    def test_insert_missing(self, nulls_fixture, using_infer_string):
         # GH#22295
         # test there is no mangling of NA values
-        expected = Index(["a", nulls_fixture, "b", "c"])
-        result = Index(list("abc")).insert(1, nulls_fixture)
+        expected = Index(["a", nulls_fixture, "b", "c"], dtype=object)
+        result = Index(list("abc"), dtype=object).insert(
+            1, Index([nulls_fixture], dtype=object)
+        )
+        tm.assert_index_equal(result, expected)
+
+    @pytest.mark.parametrize(
+        "val", [(1, 2), np.datetime64("2019-12-31"), np.timedelta64(1, "D")]
+    )
+    @pytest.mark.parametrize("loc", [-1, 2])
+    def test_insert_datetime_into_object(self, loc, val):
+        # GH#44509
+        idx = Index(["1", "2", "3"])
+        result = idx.insert(loc, val)
+        expected = Index(["1", "2", val, "3"])
+        tm.assert_index_equal(result, expected)
+        assert type(expected[2]) is type(val)
+
+    def test_insert_none_into_string_numpy(self):
+        # GH#55365
+        pytest.importorskip("pyarrow")
+        index = Index(["a", "b", "c"], dtype="string[pyarrow_numpy]")
+        result = index.insert(-1, None)
+        expected = Index(["a", "b", None, "c"], dtype="string[pyarrow_numpy]")
         tm.assert_index_equal(result, expected)
 
     @pytest.mark.parametrize(

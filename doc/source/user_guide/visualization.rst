@@ -3,8 +3,13 @@
 {{ header }}
 
 *******************
-Chart Visualization
+Chart visualization
 *******************
+
+
+.. note::
+
+   The examples below assume that you're using `Jupyter <https://jupyter.org/>`_.
 
 This section demonstrates visualization through charting. For information on
 visualization of tabular data please see the section on `Table Visualization <style.ipynb>`_.
@@ -18,7 +23,7 @@ We use the standard convention for referencing the matplotlib API:
    plt.close("all")
 
 We provide the basics in pandas to easily create decent looking plots.
-See the :ref:`ecosystem <ecosystem.visualization>` section for visualization
+See `the ecosystem page <https://pandas.pydata.org/community/ecosystem.html>`_ for visualization
 libraries that go beyond the basics documented here.
 
 .. note::
@@ -37,11 +42,8 @@ The ``plot`` method on Series and DataFrame is just a simple wrapper around
 :meth:`plt.plot() <matplotlib.axes.Axes.plot>`:
 
 .. ipython:: python
-   :suppress:
 
    np.random.seed(123456)
-
-.. ipython:: python
 
    ts = pd.Series(np.random.randn(1000), index=pd.date_range("1/1/2000", periods=1000))
    ts = ts.cumsum()
@@ -272,7 +274,7 @@ horizontal and cumulative histograms can be drawn by
    plt.close("all")
 
 See the :meth:`hist <matplotlib.axes.Axes.hist>` method and the
-`matplotlib hist documentation <https://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.hist>`__ for more.
+`matplotlib hist documentation <https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.hist.html>`__ for more.
 
 
 The existing interface ``DataFrame.hist`` to plot histogram still can be used.
@@ -410,7 +412,7 @@ For example, horizontal and custom-positioned boxplot can be drawn by
 
 
 See the :meth:`boxplot <matplotlib.axes.Axes.boxplot>` method and the
-`matplotlib boxplot documentation <https://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.boxplot>`__ for more.
+`matplotlib boxplot documentation <https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.boxplot.html>`__ for more.
 
 
 The existing interface ``DataFrame.boxplot`` to plot boxplot still can be used.
@@ -620,6 +622,7 @@ To plot multiple column groups in a single axes, repeat ``plot`` method specifyi
 It is recommended to specify ``color`` and ``label`` keywords to distinguish each groups.
 
 .. ipython:: python
+   :okwarning:
 
    ax = df.plot.scatter(x="a", y="b", color="DarkBlue", label="Group 1")
    @savefig scatter_plot_repeated.png
@@ -674,7 +677,7 @@ bubble chart using a column of the ``DataFrame`` as the bubble size.
    plt.close("all")
 
 See the :meth:`scatter <matplotlib.axes.Axes.scatter>` method and the
-`matplotlib scatter documentation <https://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.scatter>`__ for more.
+`matplotlib scatter documentation <https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.scatter.html>`__ for more.
 
 .. _visualization.hexbin:
 
@@ -734,7 +737,7 @@ given by column ``z``. The bins are aggregated with NumPy's ``max`` function.
    plt.close("all")
 
 See the :meth:`hexbin <matplotlib.axes.Axes.hexbin>` method and the
-`matplotlib hexbin documentation <https://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.hexbin>`__ for more.
+`matplotlib hexbin documentation <https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.hexbin.html>`__ for more.
 
 .. _visualization.pie:
 
@@ -823,7 +826,7 @@ Also, other keywords supported by :func:`matplotlib.pyplot.pie` can be used.
        figsize=(6, 6),
    );
 
-If you pass values whose sum total is less than 1.0, matplotlib draws a semicircle.
+If you pass values whose sum total is less than 1.0 they will be rescaled so that they sum to 1.
 
 .. ipython:: python
    :suppress:
@@ -839,7 +842,7 @@ If you pass values whose sum total is less than 1.0, matplotlib draws a semicirc
    @savefig series_pie_plot_semi.png
    series.plot.pie(figsize=(6, 6));
 
-See the `matplotlib pie documentation <https://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.pie>`__ for more.
+See the `matplotlib pie documentation <https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.pie.html>`__ for more.
 
 .. ipython:: python
     :suppress:
@@ -956,7 +959,7 @@ for more information. By coloring these curves differently for each class
 it is possible to visualize data clustering. Curves belonging to samples
 of the same class will usually be closer together and form larger structures.
 
-**Note**: The "Iris" dataset is available `here <https://raw.github.com/pandas-dev/pandas/master/pandas/tests/io/data/csv/iris.csv>`__.
+**Note**: The "Iris" dataset is available `here <https://raw.githubusercontent.com/pandas-dev/pandas/main/pandas/tests/io/data/csv/iris.csv>`__.
 
 .. ipython:: python
 
@@ -1113,10 +1116,10 @@ unit interval). The point in the plane, where our sample settles to (where the
 forces acting on our sample are at an equilibrium) is where a dot representing
 our sample will be drawn. Depending on which class that sample belongs it will
 be colored differently.
-See the R package `Radviz <https://cran.r-project.org/package=Radviz/>`__
+See the R package `Radviz <https://cran.r-project.org/web/packages/Radviz/index.html>`__
 for more information.
 
-**Note**: The "Iris" dataset is available `here <https://raw.github.com/pandas-dev/pandas/master/pandas/tests/io/data/csv/iris.csv>`__.
+**Note**: The "Iris" dataset is available `here <https://raw.githubusercontent.com/pandas-dev/pandas/main/pandas/tests/io/data/csv/iris.csv>`__.
 
 .. ipython:: python
 
@@ -1202,8 +1205,6 @@ shown by default.
 
 Controlling the labels
 ~~~~~~~~~~~~~~~~~~~~~~
-
-.. versionadded:: 1.1.0
 
 You may set the ``xlabel`` and ``ylabel`` arguments to give the plot custom labels
 for x and y axis. By default, pandas will pick up index name as xlabel, while leaving
@@ -1312,8 +1313,6 @@ with "(right)" in the legend. To turn off the automatic marking, use the
 Custom formatters for timeseries plots
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. versionchanged:: 1.0.0
-
 pandas provides custom formatters for timeseries plots. These change the
 formatting of the axis labels for dates and times. By default,
 the custom formatters are applied only to plots created by pandas with
@@ -1384,7 +1383,7 @@ tick locator methods, it is useful to call the automatic
 date tick adjustment from matplotlib for figures whose ticklabels overlap.
 
 See the :meth:`autofmt_xdate <matplotlib.figure.autofmt_xdate>` method and the
-`matplotlib documentation <https://matplotlib.org/users/recipes.html#fixing-common-date-annoyances>`__ for more.
+`matplotlib documentation <https://matplotlib.org/2.0.2/users/recipes.html#fixing-common-date-annoyances>`__ for more.
 
 Subplots
 ~~~~~~~~
@@ -1466,7 +1465,6 @@ otherwise you will see a warning.
 Another option is passing an ``ax`` argument to :meth:`Series.plot` to plot on a particular axis:
 
 .. ipython:: python
-   :suppress:
 
    np.random.seed(123456)
    ts = pd.Series(np.random.randn(1000), index=pd.date_range("1/1/2000", periods=1000))
@@ -1581,12 +1579,8 @@ Plotting tables
 Plotting with matplotlib table is now supported in  :meth:`DataFrame.plot` and :meth:`Series.plot` with a ``table`` keyword. The ``table`` keyword can accept ``bool``, :class:`DataFrame` or :class:`Series`. The simple way to draw a table is to specify ``table=True``. Data will be transposed to meet matplotlib's default layout.
 
 .. ipython:: python
-   :suppress:
 
    np.random.seed(123456)
-
-.. ipython:: python
-
    fig, ax = plt.subplots(1, 1, figsize=(7, 6.5))
    df = pd.DataFrame(np.random.rand(5, 3), columns=["a", "b", "c"])
    ax.xaxis.tick_top()  # Display x-axis ticks on top.
@@ -1620,7 +1614,7 @@ as seen in the example below.
 There also exists a helper function ``pandas.plotting.table``, which creates a
 table from :class:`DataFrame` or :class:`Series`, and adds it to an
 ``matplotlib.Axes`` instance. This function can accept keywords which the
-matplotlib `table <https://matplotlib.org/api/axes_api.html#matplotlib.axes.Axes.table>`__ has.
+matplotlib `table <https://matplotlib.org/stable/api/_as_gen/matplotlib.axes.Axes.table.html>`__ has.
 
 .. ipython:: python
 
@@ -1661,12 +1655,8 @@ colormaps will produce lines that are not easily visible.
 To use the cubehelix colormap, we can pass ``colormap='cubehelix'``.
 
 .. ipython:: python
-   :suppress:
 
    np.random.seed(123456)
-
-.. ipython:: python
-
    df = pd.DataFrame(np.random.randn(1000, 10), index=ts.index)
    df = df.cumsum()
 
@@ -1699,13 +1689,9 @@ Alternatively, we can pass the colormap itself:
 Colormaps can also be used other plot types, like bar charts:
 
 .. ipython:: python
-   :suppress:
 
    np.random.seed(123456)
-
-.. ipython:: python
-
-   dd = pd.DataFrame(np.random.randn(10, 10)).applymap(abs)
+   dd = pd.DataFrame(np.random.randn(10, 10)).map(abs)
    dd = dd.cumsum()
 
    plt.figure();
@@ -1746,7 +1732,7 @@ Andrews curves charts:
 
    plt.close("all")
 
-Plotting directly with matplotlib
+Plotting directly with Matplotlib
 ---------------------------------
 
 In some situations it may still be preferable or necessary to prepare plots
@@ -1762,12 +1748,8 @@ level of refinement you would get when plotting via pandas, it can be faster
 when plotting a large number of points.
 
 .. ipython:: python
-   :suppress:
 
    np.random.seed(123456)
-
-.. ipython:: python
-
    price = pd.Series(
        np.random.randn(150).cumsum(),
        index=pd.date_range("2000-1-1", periods=150, freq="B"),
@@ -1790,7 +1772,7 @@ when plotting a large number of points.
 Plotting backends
 -----------------
 
-Starting in version 0.25, pandas can be extended with third-party plotting backends. The
+pandas can be extended with third-party plotting backends. The
 main idea is letting users select a plotting backend different than the provided
 one based on Matplotlib.
 
@@ -1825,7 +1807,7 @@ This would be more or less equivalent to:
 
 The backend module can then use other visualization tools (Bokeh, Altair, hvplot,...)
 to generate the plots. Some libraries implementing a backend for pandas are listed
-on the ecosystem :ref:`ecosystem.visualization` page.
+on `the ecosystem page <https://pandas.pydata.org/community/ecosystem.html>`_.
 
 Developers guide can be found at
 https://pandas.pydata.org/docs/dev/development/extending.html#plotting-backends

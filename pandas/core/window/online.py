@@ -1,40 +1,40 @@
-from typing import (
-    Dict,
-    Optional,
-)
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from pandas.compat._optional import import_optional_dependency
 
-from pandas.core.util.numba_ import (
-    NUMBA_FUNC_CACHE,
-    get_jit_arguments,
-)
 
-
-def generate_online_numba_ewma_func(engine_kwargs: Optional[Dict[str, bool]]):
+def generate_online_numba_ewma_func(
+    nopython: bool,
+    nogil: bool,
+    parallel: bool,
+):
     """
     Generate a numba jitted groupby ewma function specified by values
     from engine_kwargs.
+
     Parameters
     ----------
-    engine_kwargs : dict
-        dictionary of arguments to be passed into numba.jit
+    nopython : bool
+        nopython to be passed into numba.jit
+    nogil : bool
+        nogil to be passed into numba.jit
+    parallel : bool
+        parallel to be passed into numba.jit
+
     Returns
     -------
     Numba function
     """
-    nopython, nogil, parallel = get_jit_arguments(engine_kwargs)
+    if TYPE_CHECKING:
+        import numba
+    else:
+        numba = import_optional_dependency("numba")
 
-    cache_key = (lambda x: x, "online_ewma")
-    if cache_key in NUMBA_FUNC_CACHE:
-        return NUMBA_FUNC_CACHE[cache_key]
-
-    numba = import_optional_dependency("numba")
-
-    # error: Untyped decorator makes function "online_ewma" untyped
-    @numba.jit(nopython=nopython, nogil=nogil, parallel=parallel)  # type: ignore[misc]
+    @numba.jit(nopython=nopython, nogil=nogil, parallel=parallel)
     def online_ewma(
         values: np.ndarray,
         deltas: np.ndarray,
@@ -52,7 +52,7 @@ def generate_online_numba_ewma_func(engine_kwargs: Optional[Dict[str, bool]]):
         exponentially weighted mean accounting minimum periods.
         """
         result = np.empty(values.shape)
-        weighted_avg = values[0]
+        weighted_avg = values[0].copy()
         nobs = (~np.isnan(weighted_avg)).astype(np.int64)
         result[0] = np.where(nobs >= minimum_periods, weighted_avg, np.nan)
 
@@ -63,7 +63,6 @@ def generate_online_numba_ewma_func(engine_kwargs: Optional[Dict[str, bool]]):
             for j in numba.prange(len(cur)):
                 if not np.isnan(weighted_avg[j]):
                     if is_observations[j] or not ignore_na:
-
                         # note that len(deltas) = len(vals) - 1 and deltas[i] is to be
                         # used in conjunction with vals[i+1]
                         old_wt[j] *= old_wt_factor ** deltas[j - 1]
@@ -88,15 +87,14 @@ def generate_online_numba_ewma_func(engine_kwargs: Optional[Dict[str, bool]]):
 
 
 class EWMMeanState:
-    def __init__(self, com, adjust, ignore_na, axis, shape):
+    def __init__(self, com, adjust, ignore_na, shape) -> None:
         alpha = 1.0 / (1.0 + com)
-        self.axis = axis
         self.shape = shape
         self.adjust = adjust
         self.ignore_na = ignore_na
         self.new_wt = 1.0 if adjust else alpha
         self.old_wt_factor = 1.0 - alpha
-        self.old_wt = np.ones(self.shape[self.axis - 1])
+        self.old_wt = np.ones(self.shape[-1])
         self.last_ewm = None
 
     def run_ewm(self, weighted_avg, deltas, min_periods, ewm_func):
@@ -114,6 +112,6 @@ class EWMMeanState:
         self.last_ewm = result[-1]
         return result
 
-    def reset(self):
-        self.old_wt = np.ones(self.shape[self.axis - 1])
+    def reset(self) -> None:
+        self.old_wt = np.ones(self.shape[-1])
         self.last_ewm = None

@@ -3,33 +3,14 @@ import pytest
 
 from pandas import (
     DataFrame,
-    MultiIndex,
+    Index,
+    Series,
+    date_range,
 )
-import pandas._testing as tm
 from pandas.core.groupby.base import (
     reduction_kernels,
     transformation_kernels,
 )
-
-
-@pytest.fixture(params=[True, False])
-def sort(request):
-    return request.param
-
-
-@pytest.fixture(params=[True, False])
-def as_index(request):
-    return request.param
-
-
-@pytest.fixture
-def mframe():
-    index = MultiIndex(
-        levels=[["foo", "bar", "baz", "qux"], ["one", "two", "three"]],
-        codes=[[0, 0, 0, 1, 1, 2, 2, 3, 3, 3], [0, 1, 2, 0, 1, 1, 2, 0, 1, 2]],
-        names=["first", "second"],
-    )
-    return DataFrame(np.random.randn(10, 3), index=index, columns=["A", "B", "C"])
 
 
 @pytest.fixture
@@ -38,36 +19,26 @@ def df():
         {
             "A": ["foo", "bar", "foo", "bar", "foo", "bar", "foo", "foo"],
             "B": ["one", "one", "two", "three", "two", "two", "one", "three"],
-            "C": np.random.randn(8),
-            "D": np.random.randn(8),
+            "C": np.random.default_rng(2).standard_normal(8),
+            "D": np.random.default_rng(2).standard_normal(8),
         }
     )
 
 
 @pytest.fixture
 def ts():
-    return tm.makeTimeSeries()
+    return Series(
+        np.random.default_rng(2).standard_normal(30),
+        index=date_range("2000-01-01", periods=30, freq="B"),
+    )
 
 
 @pytest.fixture
-def tsd():
-    return tm.getTimeSeriesData()
-
-
-@pytest.fixture
-def tsframe(tsd):
-    return DataFrame(tsd)
-
-
-@pytest.fixture
-def df_mixed_floats():
+def tsframe():
     return DataFrame(
-        {
-            "A": ["foo", "bar", "foo", "bar", "foo", "bar", "foo", "foo"],
-            "B": ["one", "one", "two", "three", "two", "two", "one", "three"],
-            "C": np.random.randn(8),
-            "D": np.array(np.random.randn(8), dtype="float32"),
-        }
+        np.random.default_rng(2).standard_normal((30, 4)),
+        columns=Index(list("ABCD"), dtype=object),
+        index=date_range("2000-01-01", periods=30, freq="B"),
     )
 
 
@@ -114,14 +85,14 @@ def three_group():
                 "shiny",
                 "shiny",
             ],
-            "D": np.random.randn(11),
-            "E": np.random.randn(11),
-            "F": np.random.randn(11),
+            "D": np.random.default_rng(2).standard_normal(11),
+            "E": np.random.default_rng(2).standard_normal(11),
+            "F": np.random.default_rng(2).standard_normal(11),
         }
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def slice_test_df():
     data = [
         [0, "a", "a0_at_0"],
@@ -137,7 +108,7 @@ def slice_test_df():
     return df.set_index("Index")
 
 
-@pytest.fixture()
+@pytest.fixture
 def slice_test_grouped(slice_test_df):
     return slice_test_df.groupby("Group", as_index=False)
 
@@ -162,23 +133,34 @@ def groupby_func(request):
     return request.param
 
 
-@pytest.fixture(params=[True, False])
-def parallel(request):
-    """parallel keyword argument for numba.jit"""
-    return request.param
-
-
-# Can parameterize nogil & nopython over True | False, but limiting per
-# https://github.com/pandas-dev/pandas/pull/41971#issuecomment-860607472
-
-
-@pytest.fixture(params=[False])
-def nogil(request):
-    """nogil keyword argument for numba.jit"""
-    return request.param
-
-
-@pytest.fixture(params=[True])
-def nopython(request):
-    """nopython keyword argument for numba.jit"""
+@pytest.fixture(
+    params=[
+        ("mean", {}),
+        ("var", {"ddof": 1}),
+        ("var", {"ddof": 0}),
+        ("std", {"ddof": 1}),
+        ("std", {"ddof": 0}),
+        ("sum", {}),
+        ("min", {}),
+        ("max", {}),
+        ("sum", {"min_count": 2}),
+        ("min", {"min_count": 2}),
+        ("max", {"min_count": 2}),
+    ],
+    ids=[
+        "mean",
+        "var_1",
+        "var_0",
+        "std_1",
+        "std_0",
+        "sum",
+        "min",
+        "max",
+        "sum-min_count",
+        "min-min_count",
+        "max-min_count",
+    ],
+)
+def numba_supported_reductions(request):
+    """reductions supported with engine='numba'"""
     return request.param

@@ -1,21 +1,16 @@
 from __future__ import annotations
 
+import itertools
 from typing import (
     TYPE_CHECKING,
     Callable,
-    Hashable,
-    Sequence,
+    Literal,
     cast,
 )
 
 import numpy as np
 
-from pandas._typing import (
-    AggFuncType,
-    AggFuncTypeBase,
-    AggFuncTypeDict,
-    IndexLabel,
-)
+from pandas._libs import lib
 from pandas.util._decorators import (
     Appender,
     Substitution,
@@ -23,11 +18,11 @@ from pandas.util._decorators import (
 
 from pandas.core.dtypes.cast import maybe_downcast_to_dtype
 from pandas.core.dtypes.common import (
-    is_integer_dtype,
     is_list_like,
     is_nested_list_like,
     is_scalar,
 )
+from pandas.core.dtypes.dtypes import ExtensionDtype
 from pandas.core.dtypes.generic import (
     ABCDataFrame,
     ABCSeries,
@@ -46,6 +41,16 @@ from pandas.core.reshape.util import cartesian_product
 from pandas.core.series import Series
 
 if TYPE_CHECKING:
+    from collections.abc import Hashable
+
+    from pandas._typing import (
+        AggFuncType,
+        AggFuncTypeBase,
+        AggFuncTypeDict,
+        IndexLabel,
+        SequenceNotStr,
+    )
+
     from pandas import DataFrame
 
 
@@ -60,11 +65,11 @@ def pivot_table(
     columns=None,
     aggfunc: AggFuncType = "mean",
     fill_value=None,
-    margins=False,
-    dropna=True,
-    margins_name="All",
-    observed=False,
-    sort=True,
+    margins: bool = False,
+    dropna: bool = True,
+    margins_name: Hashable = "All",
+    observed: bool = True,
+    sort: bool = True,
 ) -> DataFrame:
     index = _convert_by(index)
     columns = _convert_by(columns)
@@ -117,7 +122,7 @@ def __internal_pivot_table(
     fill_value,
     margins: bool,
     dropna: bool,
-    margins_name: str,
+    margins_name: Hashable,
     observed: bool,
     sort: bool,
 ) -> DataFrame:
@@ -161,31 +166,11 @@ def __internal_pivot_table(
                 pass
         values = list(values)
 
-    grouped = data.groupby(keys, observed=observed, sort=sort)
+    grouped = data.groupby(keys, observed=observed, sort=sort, dropna=dropna)
     agged = grouped.agg(aggfunc)
+
     if dropna and isinstance(agged, ABCDataFrame) and len(agged.columns):
         agged = agged.dropna(how="all")
-
-        # gh-21133
-        # we want to down cast if
-        # the original values are ints
-        # as we grouped with a NaN value
-        # and then dropped, coercing to floats
-        for v in values:
-            if (
-                v in data
-                and is_integer_dtype(data[v])
-                and v in agged
-                and not is_integer_dtype(agged[v])
-            ):
-                if isinstance(agged[v], ABCDataFrame):
-                    # exclude DataFrame case bc maybe_downcast_to_dtype expects
-                    #  ArrayLike
-                    # TODO: why does test_pivot_table_doctest_case fail if
-                    # we don't do this apparently-unnecessary setitem?
-                    agged[v] = agged[v]
-                else:
-                    agged[v] = maybe_downcast_to_dtype(agged[v], data[v].dtype)
 
     table = agged
 
@@ -202,28 +187,30 @@ def __internal_pivot_table(
                 to_unstack.append(i)
             else:
                 to_unstack.append(name)
-        table = agged.unstack(to_unstack)
+        table = agged.unstack(to_unstack, fill_value=fill_value)
 
     if not dropna:
         if isinstance(table.index, MultiIndex):
             m = MultiIndex.from_arrays(
                 cartesian_product(table.index.levels), names=table.index.names
             )
-            table = table.reindex(m, axis=0)
+            table = table.reindex(m, axis=0, fill_value=fill_value)
 
         if isinstance(table.columns, MultiIndex):
             m = MultiIndex.from_arrays(
                 cartesian_product(table.columns.levels), names=table.columns.names
             )
-            table = table.reindex(m, axis=1)
+            table = table.reindex(m, axis=1, fill_value=fill_value)
 
-    if isinstance(table, ABCDataFrame):
+    if sort is True and isinstance(table, ABCDataFrame):
         table = table.sort_index(axis=1)
 
     if fill_value is not None:
-        _table = table.fillna(fill_value, downcast="infer")
-        assert _table is not None  # needed for mypy
-        table = _table
+        table = table.fillna(fill_value)
+        if aggfunc is len and not observed and lib.is_integer(fill_value):
+            # TODO: can we avoid this?  this used to be handled by
+            #  downcast="infer" in fillna
+            table = table.astype(np.int64)
 
     if margins:
         if dropna:
@@ -242,7 +229,7 @@ def __internal_pivot_table(
 
     # discard the top level
     if values_passed and not values_multi and table.columns.nlevels > 1:
-        table = table.droplevel(0, axis=1)
+        table.columns = table.columns.droplevel(0)
     if len(index) == 0 and len(columns) > 0:
         table = table.T
 
@@ -255,13 +242,13 @@ def __internal_pivot_table(
 
 def _add_margins(
     table: DataFrame | Series,
-    data,
+    data: DataFrame,
     values,
     rows,
     cols,
     aggfunc,
-    observed=None,
-    margins_name: str = "All",
+    observed: bool,
+    margins_name: Hashable = "All",
     fill_value=None,
 ):
     if not isinstance(margins_name, str):
@@ -289,7 +276,7 @@ def _add_margins(
     if not values and isinstance(table, ABCSeries):
         # If there are no values and the table is a series, then there is only
         # one column in the data. Compute grand margin and return it.
-        return table.append(Series({key: grand_margin[margins_name]}))
+        return table._append(table._constructor({key: grand_margin[margins_name]}))
 
     elif values:
         marginal_result_set = _generate_marginal_results(
@@ -318,23 +305,29 @@ def _add_margins(
 
     from pandas import DataFrame
 
-    margin_dummy = DataFrame(row_margin, columns=[key]).T
+    margin_dummy = DataFrame(row_margin, columns=Index([key])).T
 
     row_names = result.index.names
     # check the result column and leave floats
+
     for dtype in set(result.dtypes):
+        if isinstance(dtype, ExtensionDtype):
+            # Can hold NA already
+            continue
+
         cols = result.select_dtypes([dtype]).columns
         margin_dummy[cols] = margin_dummy[cols].apply(
             maybe_downcast_to_dtype, args=(dtype,)
         )
-    result = result.append(margin_dummy)
+    result = result._append(margin_dummy)
     result.index.names = row_names
 
     return result
 
 
-def _compute_grand_margin(data, values, aggfunc, margins_name: str = "All"):
-
+def _compute_grand_margin(
+    data: DataFrame, values, aggfunc, margins_name: Hashable = "All"
+):
     if values:
         grand_margin = {}
         for k, v in data[values].items():
@@ -356,8 +349,16 @@ def _compute_grand_margin(data, values, aggfunc, margins_name: str = "All"):
 
 
 def _generate_marginal_results(
-    table, data, values, rows, cols, aggfunc, observed, margins_name: str = "All"
+    table,
+    data: DataFrame,
+    values,
+    rows,
+    cols,
+    aggfunc,
+    observed: bool,
+    margins_name: Hashable = "All",
 ):
+    margin_keys: list | Index
     if len(cols) > 0:
         # need to "interleave" the margins
         table_pieces = []
@@ -370,7 +371,8 @@ def _generate_marginal_results(
             margin = data[rows + values].groupby(rows, observed=observed).agg(aggfunc)
             cat_axis = 1
 
-            for key, piece in table.groupby(level=0, axis=cat_axis, observed=observed):
+            for key, piece in table.T.groupby(level=0, observed=observed):
+                piece = piece.T
                 all_key = _all_key(key)
 
                 # we are going to mutate this, so need to copy!
@@ -383,7 +385,7 @@ def _generate_marginal_results(
             from pandas import DataFrame
 
             cat_axis = 0
-            for key, piece in table.groupby(level=0, axis=cat_axis, observed=observed):
+            for key, piece in table.groupby(level=0, observed=observed):
                 if len(cols) > 1:
                     all_key = _all_key(key)
                 else:
@@ -392,13 +394,23 @@ def _generate_marginal_results(
                 # GH31016 this is to calculate margin for each group, and assign
                 # corresponded key as index
                 transformed_piece = DataFrame(piece.apply(aggfunc)).T
-                transformed_piece.index = Index([all_key], name=piece.index.name)
+                if isinstance(piece.index, MultiIndex):
+                    # We are adding an empty level
+                    transformed_piece.index = MultiIndex.from_tuples(
+                        [all_key], names=piece.index.names + (None,)
+                    )
+                else:
+                    transformed_piece.index = Index([all_key], name=piece.index.name)
 
                 # append piece for margin into table_piece
                 table_pieces.append(transformed_piece)
                 margin_keys.append(all_key)
 
-        result = concat(table_pieces, axis=cat_axis)
+        if not table_pieces:
+            # GH 49240
+            return table
+        else:
+            result = concat(table_pieces, axis=cat_axis)
 
         if len(rows) == 0:
             return result
@@ -410,21 +422,29 @@ def _generate_marginal_results(
         row_margin = data[cols + values].groupby(cols, observed=observed).agg(aggfunc)
         row_margin = row_margin.stack()
 
-        # slight hack
-        new_order = [len(cols)] + list(range(len(cols)))
-        row_margin.index = row_margin.index.reorder_levels(new_order)
+        # GH#26568. Use names instead of indices in case of numeric names
+        new_order_indices = itertools.chain([len(cols)], range(len(cols)))
+        new_order_names = [row_margin.index.names[i] for i in new_order_indices]
+        row_margin.index = row_margin.index.reorder_levels(new_order_names)
     else:
-        row_margin = Series(np.nan, index=result.columns)
+        row_margin = data._constructor_sliced(np.nan, index=result.columns)
 
     return result, margin_keys, row_margin
 
 
 def _generate_marginal_results_without_values(
-    table: DataFrame, data, rows, cols, aggfunc, observed, margins_name: str = "All"
+    table: DataFrame,
+    data: DataFrame,
+    rows,
+    cols,
+    aggfunc,
+    observed: bool,
+    margins_name: Hashable = "All",
 ):
+    margin_keys: list | Index
     if len(cols) > 0:
         # need to "interleave" the margins
-        margin_keys: list | Index = []
+        margin_keys = []
 
         def _all_key():
             if len(cols) == 1:
@@ -432,14 +452,14 @@ def _generate_marginal_results_without_values(
             return (margins_name,) + ("",) * (len(cols) - 1)
 
         if len(rows) > 0:
-            margin = data[rows].groupby(rows, observed=observed).apply(aggfunc)
+            margin = data.groupby(rows, observed=observed)[rows].apply(aggfunc)
             all_key = _all_key()
             table[all_key] = margin
             result = table
             margin_keys.append(all_key)
 
         else:
-            margin = data.groupby(level=0, axis=0, observed=observed).apply(aggfunc)
+            margin = data.groupby(level=0, observed=observed).apply(aggfunc)
             all_key = _all_key()
             table[all_key] = margin
             result = table
@@ -450,7 +470,7 @@ def _generate_marginal_results_without_values(
         margin_keys = table.columns
 
     if len(cols):
-        row_margin = data[cols].groupby(cols, observed=observed).apply(aggfunc)
+        row_margin = data.groupby(cols, observed=observed)[cols].apply(aggfunc)
     else:
         row_margin = Series(np.nan, index=result.columns)
 
@@ -475,30 +495,48 @@ def _convert_by(by):
 @Appender(_shared_docs["pivot"], indents=1)
 def pivot(
     data: DataFrame,
-    index: IndexLabel | None = None,
-    columns: IndexLabel | None = None,
-    values: IndexLabel | None = None,
+    *,
+    columns: IndexLabel,
+    index: IndexLabel | lib.NoDefault = lib.no_default,
+    values: IndexLabel | lib.NoDefault = lib.no_default,
 ) -> DataFrame:
-    if columns is None:
-        raise TypeError("pivot() missing 1 required argument: 'columns'")
-
     columns_listlike = com.convert_to_list_like(columns)
 
-    if values is None:
-        if index is not None:
+    # If columns is None we will create a MultiIndex level with None as name
+    # which might cause duplicated names because None is the default for
+    # level names
+    data = data.copy(deep=False)
+    data.index = data.index.copy()
+    data.index.names = [
+        name if name is not None else lib.no_default for name in data.index.names
+    ]
+
+    indexed: DataFrame | Series
+    if values is lib.no_default:
+        if index is not lib.no_default:
             cols = com.convert_to_list_like(index)
         else:
             cols = []
 
-        append = index is None
+        append = index is lib.no_default
         # error: Unsupported operand types for + ("List[Any]" and "ExtensionArray")
         # error: Unsupported left operand type for + ("ExtensionArray")
         indexed = data.set_index(
-            cols + columns_listlike, append=append  # type: ignore[operator]
+            cols + columns_listlike,  # type: ignore[operator]
+            append=append,
         )
     else:
-        if index is None:
-            index_list = [Series(data.index, name=data.index.name)]
+        index_list: list[Index] | list[Series]
+        if index is lib.no_default:
+            if isinstance(data.index, MultiIndex):
+                # GH 23955
+                index_list = [
+                    data.index.get_level_values(i) for i in range(data.index.nlevels)
+                ]
+            else:
+                index_list = [
+                    data._constructor_sliced(data.index, name=data.index.name)
+                ]
         else:
             index_list = [data[idx] for idx in com.convert_to_list_like(index)]
 
@@ -508,13 +546,23 @@ def pivot(
 
         if is_list_like(values) and not isinstance(values, tuple):
             # Exclude tuple because it is seen as a single column name
-            values = cast(Sequence[Hashable], values)
             indexed = data._constructor(
-                data[values]._values, index=multiindex, columns=values
+                data[values]._values,
+                index=multiindex,
+                columns=cast("SequenceNotStr", values),
             )
         else:
             indexed = data._constructor_sliced(data[values]._values, index=multiindex)
-    return indexed.unstack(columns_listlike)
+    # error: Argument 1 to "unstack" of "DataFrame" has incompatible type "Union
+    # [List[Any], ExtensionArray, ndarray[Any, Any], Index, Series]"; expected
+    # "Hashable"
+    # unstack with a MultiIndex returns a DataFrame
+    result = cast("DataFrame", indexed.unstack(columns_listlike))  # type: ignore[arg-type]
+    result.index.names = [
+        name if name is not lib.no_default else None for name in result.index.names
+    ]
+
+    return result
 
 
 def crosstab(
@@ -524,15 +572,16 @@ def crosstab(
     rownames=None,
     colnames=None,
     aggfunc=None,
-    margins=False,
-    margins_name: str = "All",
+    margins: bool = False,
+    margins_name: Hashable = "All",
     dropna: bool = True,
-    normalize=False,
+    normalize: bool | Literal[0, 1, "all", "index", "columns"] = False,
 ) -> DataFrame:
     """
-    Compute a simple cross tabulation of two (or more) factors. By default
-    computes a frequency table of the factors unless an array of values and an
-    aggregation function are passed.
+    Compute a simple cross tabulation of two (or more) factors.
+
+    By default, computes a frequency table of the factors unless an
+    array of values and an aggregation function are passed.
 
     Parameters
     ----------
@@ -586,16 +635,59 @@ def crosstab(
     In the event that there aren't overlapping indexes an empty DataFrame will
     be returned.
 
+    Reference :ref:`the user guide <reshaping.crosstabulations>` for more examples.
+
     Examples
     --------
-    >>> a = np.array(["foo", "foo", "foo", "foo", "bar", "bar",
-    ...               "bar", "bar", "foo", "foo", "foo"], dtype=object)
-    >>> b = np.array(["one", "one", "one", "two", "one", "one",
-    ...               "one", "two", "two", "two", "one"], dtype=object)
-    >>> c = np.array(["dull", "dull", "shiny", "dull", "dull", "shiny",
-    ...               "shiny", "dull", "shiny", "shiny", "shiny"],
-    ...              dtype=object)
-    >>> pd.crosstab(a, [b, c], rownames=['a'], colnames=['b', 'c'])
+    >>> a = np.array(
+    ...     [
+    ...         "foo",
+    ...         "foo",
+    ...         "foo",
+    ...         "foo",
+    ...         "bar",
+    ...         "bar",
+    ...         "bar",
+    ...         "bar",
+    ...         "foo",
+    ...         "foo",
+    ...         "foo",
+    ...     ],
+    ...     dtype=object,
+    ... )
+    >>> b = np.array(
+    ...     [
+    ...         "one",
+    ...         "one",
+    ...         "one",
+    ...         "two",
+    ...         "one",
+    ...         "one",
+    ...         "one",
+    ...         "two",
+    ...         "two",
+    ...         "two",
+    ...         "one",
+    ...     ],
+    ...     dtype=object,
+    ... )
+    >>> c = np.array(
+    ...     [
+    ...         "dull",
+    ...         "dull",
+    ...         "shiny",
+    ...         "dull",
+    ...         "dull",
+    ...         "shiny",
+    ...         "shiny",
+    ...         "dull",
+    ...         "shiny",
+    ...         "shiny",
+    ...         "shiny",
+    ...     ],
+    ...     dtype=object,
+    ... )
+    >>> pd.crosstab(a, [b, c], rownames=["a"], colnames=["b", "c"])
     b   one        two
     c   dull shiny dull shiny
     a
@@ -606,8 +698,8 @@ def crosstab(
     shown in the output because dropna is True by default. Set
     dropna=False to preserve categories with no data.
 
-    >>> foo = pd.Categorical(['a', 'b'], categories=['a', 'b', 'c'])
-    >>> bar = pd.Categorical(['d', 'e'], categories=['d', 'e', 'f'])
+    >>> foo = pd.Categorical(["a", "b"], categories=["a", "b", "c"])
+    >>> bar = pd.Categorical(["d", "e"], categories=["d", "e", "f"])
     >>> pd.crosstab(foo, bar)
     col_0  d  e
     row_0
@@ -662,6 +754,8 @@ def crosstab(
         df["__dummy__"] = values
         kwargs = {"aggfunc": aggfunc}
 
+    # error: Argument 7 to "pivot_table" of "DataFrame" has incompatible type
+    # "**Dict[str, object]"; expected "Union[...]"
     table = df.pivot_table(
         "__dummy__",
         index=unique_rownames,
@@ -669,7 +763,8 @@ def crosstab(
         margins=margins,
         margins_name=margins_name,
         dropna=dropna,
-        **kwargs,
+        observed=dropna,
+        **kwargs,  # type: ignore[arg-type]
     )
 
     # Post-process
@@ -684,8 +779,9 @@ def crosstab(
     return table
 
 
-def _normalize(table, normalize, margins: bool, margins_name="All"):
-
+def _normalize(
+    table: DataFrame, normalize, margins: bool, margins_name: Hashable = "All"
+) -> DataFrame:
     if not isinstance(normalize, (bool, str)):
         axis_subs = {0: "index", 1: "columns"}
         try:
@@ -694,7 +790,6 @@ def _normalize(table, normalize, margins: bool, margins_name="All"):
             raise ValueError("Not a valid normalize argument") from err
 
     if margins is False:
-
         # Actual Normalizations
         normalizers: dict[bool | str, Callable] = {
             "all": lambda x: x / x.sum(axis=1).sum(axis=0),
@@ -740,7 +835,7 @@ def _normalize(table, normalize, margins: bool, margins_name="All"):
 
         elif normalize == "index":
             index_margin = index_margin / index_margin.sum()
-            table = table.append(index_margin)
+            table = table._append(index_margin)
             table = table.fillna(0)
             table.index = table_index
 
@@ -749,7 +844,7 @@ def _normalize(table, normalize, margins: bool, margins_name="All"):
             index_margin = index_margin / index_margin.sum()
             index_margin.loc[margins_name] = 1
             table = concat([table, column_margin], axis=1)
-            table = table.append(index_margin)
+            table = table._append(index_margin)
 
             table = table.fillna(0)
             table.index = table_index
@@ -764,7 +859,7 @@ def _normalize(table, normalize, margins: bool, margins_name="All"):
     return table
 
 
-def _get_names(arrs, names, prefix: str = "row"):
+def _get_names(arrs, names, prefix: str = "row") -> list:
     if names is None:
         names = []
         for i, arr in enumerate(arrs):
@@ -810,13 +905,7 @@ def _build_names_mapper(
         a list of column names with duplicate names replaced by dummy names
 
     """
-
-    def get_duplicates(names):
-        seen: set = set()
-        return {name for name in names if name not in seen}
-
-    shared_names = set(rownames).intersection(set(colnames))
-    dup_names = get_duplicates(rownames) | get_duplicates(colnames) | shared_names
+    dup_names = set(rownames) | set(colnames)
 
     rownames_mapper = {
         f"row_{i}": name for i, name in enumerate(rownames) if name in dup_names

@@ -10,13 +10,9 @@ from pandas import (
     date_range,
 )
 import pandas._testing as tm
-from pandas.tests.generic.test_generic import Generic
 
 
-class TestSeries(Generic):
-    _typ = Series
-    _comparator = lambda self, x, y: tm.assert_series_equal(x, y)
-
+class TestSeries:
     @pytest.mark.parametrize("func", ["rename_axis", "_set_axis_name"])
     def test_set_axis_name_mi(self, func):
         ser = Series(
@@ -28,9 +24,9 @@ class TestSeries(Generic):
 
         result = methodcaller(func, ["L1", "L2"])(ser)
         assert ser.index.name is None
-        assert ser.index.names == ["l1", "l2"]
+        assert ser.index.names == ("l1", "l2")
         assert result.index.name is None
-        assert result.index.names, ["L1", "L2"]
+        assert result.index.names == ("L1", "L2")
 
     def test_set_axis_name_raises(self):
         ser = Series([1])
@@ -41,16 +37,7 @@ class TestSeries(Generic):
     def test_get_bool_data_preserve_dtype(self):
         ser = Series([True, False, True])
         result = ser._get_bool_data()
-        self._compare(result, ser)
-
-    def test_nonzero_single_element(self):
-
-        # allow single item via bool method
-        ser = Series([True])
-        assert ser.bool()
-
-        ser = Series([False])
-        assert not ser.bool()
+        tm.assert_series_equal(result, ser)
 
     @pytest.mark.parametrize("data", [np.nan, pd.NaT, True, False])
     def test_nonzero_single_element_raise_1(self, data):
@@ -61,53 +48,37 @@ class TestSeries(Generic):
         with pytest.raises(ValueError, match=msg):
             bool(series)
 
-    @pytest.mark.parametrize("data", [np.nan, pd.NaT])
-    def test_nonzero_single_element_raise_2(self, data):
-        series = Series([data])
-
-        msg = "bool cannot act on a non-boolean single element Series"
-        with pytest.raises(ValueError, match=msg):
-            series.bool()
-
     @pytest.mark.parametrize("data", [(True, True), (False, False)])
     def test_nonzero_multiple_element_raise(self, data):
         # multiple bool are still an error
+        msg_err = "The truth value of a Series is ambiguous"
         series = Series([data])
-
-        msg = "The truth value of a Series is ambiguous"
-        with pytest.raises(ValueError, match=msg):
+        with pytest.raises(ValueError, match=msg_err):
             bool(series)
-        with pytest.raises(ValueError, match=msg):
-            series.bool()
 
     @pytest.mark.parametrize("data", [1, 0, "a", 0.0])
     def test_nonbool_single_element_raise(self, data):
         # single non-bool are an error
+        msg_err1 = "The truth value of a Series is ambiguous"
         series = Series([data])
-
-        msg = "The truth value of a Series is ambiguous"
-        with pytest.raises(ValueError, match=msg):
+        with pytest.raises(ValueError, match=msg_err1):
             bool(series)
-
-        msg = "bool cannot act on a non-boolean single element Series"
-        with pytest.raises(ValueError, match=msg):
-            series.bool()
 
     def test_metadata_propagation_indiv_resample(self):
         # resample
         ts = Series(
-            np.random.rand(1000),
+            np.random.default_rng(2).random(1000),
             index=date_range("20130101", periods=1000, freq="s"),
             name="foo",
         )
-        result = ts.resample("1T").mean()
-        self.check_metadata(ts, result)
+        result = ts.resample("1min").mean()
+        tm.assert_metadata_equivalent(ts, result)
 
-        result = ts.resample("1T").min()
-        self.check_metadata(ts, result)
+        result = ts.resample("1min").min()
+        tm.assert_metadata_equivalent(ts, result)
 
-        result = ts.resample("1T").apply(lambda x: x.sum())
-        self.check_metadata(ts, result)
+        result = ts.resample("1min").apply(lambda x: x.sum())
+        tm.assert_metadata_equivalent(ts, result)
 
     def test_metadata_propagation_indiv(self, monkeypatch):
         # check that the metadata matches up on the resulting ops
@@ -118,7 +89,7 @@ class TestSeries(Generic):
         ser2.name = "bar"
 
         result = ser.T
-        self.check_metadata(ser, result)
+        tm.assert_metadata_equivalent(ser, result)
 
         def finalize(self, other, method=None, **kwargs):
             for name in self._metadata:

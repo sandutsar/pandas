@@ -22,7 +22,7 @@ class SparseSeriesToFrame:
     def setup(self):
         K = 50
         N = 50001
-        rng = date_range("1/1/2000", periods=N, freq="T")
+        rng = date_range("1/1/2000", periods=N, freq="min")
         self.series = {}
         for i in range(1, K):
             data = np.random.randn(N)[:-i]
@@ -35,12 +35,11 @@ class SparseSeriesToFrame:
 
 
 class SparseArrayConstructor:
-
     params = ([0.1, 0.01], [0, np.nan], [np.int64, np.float64, object])
     param_names = ["dense_proportion", "fill_value", "dtype"]
 
     def setup(self, dense_proportion, fill_value, dtype):
-        N = 10 ** 6
+        N = 10**6
         self.array = make_array(N, dense_proportion, fill_value, dtype)
 
     def time_sparse_array(self, dense_proportion, fill_value, dtype):
@@ -106,12 +105,11 @@ class ToCooFrame:
 
 
 class Arithmetic:
-
     params = ([0.1, 0.01], [0, np.nan])
     param_names = ["dense_proportion", "fill_value"]
 
     def setup(self, dense_proportion, fill_value):
-        N = 10 ** 6
+        N = 10**6
         arr1 = make_array(N, dense_proportion, fill_value, np.int64)
         self.array1 = SparseArray(arr1, fill_value=fill_value)
         arr2 = make_array(N, dense_proportion, fill_value, np.int64)
@@ -131,12 +129,11 @@ class Arithmetic:
 
 
 class ArithmeticBlock:
-
     params = [np.nan, 0]
     param_names = ["fill_value"]
 
     def setup(self, fill_value):
-        N = 10 ** 6
+        N = 10**6
         self.arr1 = self.make_block_array(
             length=N, num_blocks=1000, block_size=10, fill_value=fill_value
         )
@@ -146,10 +143,10 @@ class ArithmeticBlock:
 
     def make_block_array(self, length, num_blocks, block_size, fill_value):
         arr = np.full(length, fill_value)
-        indicies = np.random.choice(
+        indices = np.random.choice(
             np.arange(0, length, block_size), num_blocks, replace=False
         )
-        for ind in indicies:
+        for ind in indices:
             arr[ind : ind + block_size] = np.random.randint(0, 100, block_size)
         return SparseArray(arr, fill_value=fill_value)
 
@@ -167,7 +164,6 @@ class ArithmeticBlock:
 
 
 class MinMax:
-
     params = (["min", "max"], [0.0, np.nan])
     param_names = ["func", "fill_value"]
 
@@ -181,7 +177,6 @@ class MinMax:
 
 
 class Take:
-
     params = ([np.array([0]), np.arange(100_000), np.full(100_000, -1)], [True, False])
     param_names = ["indices", "allow_fill"]
 
@@ -198,7 +193,8 @@ class Take:
 class GetItem:
     def setup(self):
         N = 1_000_000
-        arr = make_array(N, 1e-5, np.nan, np.float64)
+        d = 1e-5
+        arr = make_array(N, d, np.nan, np.float64)
         self.sp_arr = SparseArray(arr)
 
     def time_integer_indexing(self):
@@ -206,6 +202,26 @@ class GetItem:
 
     def time_slice(self):
         self.sp_arr[1:]
+
+
+class GetItemMask:
+    params = [True, False, np.nan]
+    param_names = ["fill_value"]
+
+    def setup(self, fill_value):
+        N = 1_000_000
+        d = 1e-5
+        arr = make_array(N, d, np.nan, np.float64)
+        self.sp_arr = SparseArray(arr)
+        b_arr = np.full(shape=N, fill_value=fill_value, dtype=np.bool_)
+        fv_inds = np.unique(
+            np.random.randint(low=0, high=N - 1, size=int(N * d), dtype=np.int32)
+        )
+        b_arr[fv_inds] = True if pd.isna(fill_value) else not fill_value
+        self.sp_b_arr = SparseArray(b_arr, dtype=np.bool_, fill_value=fill_value)
+
+    def time_mask(self, fill_value):
+        self.sp_arr[self.sp_b_arr]
 
 
 from .pandas_vb_common import setup  # noqa: F401 isort:skip

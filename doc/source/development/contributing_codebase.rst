@@ -18,40 +18,32 @@ tools will be run to check your code for stylistic errors.
 Generating any warnings will cause the test to fail.
 Thus, good style is a requirement for submitting code to pandas.
 
-There is a tool in pandas to help contributors verify their changes before
-contributing them to the project::
+There are a couple of tools in pandas to help contributors verify their changes
+before contributing to the project
 
-   ./ci/code_checks.sh
-
-The script validates the doctests, formatting in docstrings, static typing, and
-imported modules. It is possible to run the checks independently by using the
-parameters ``docstring``, ``code``, ``typing``, and ``doctests``
-(e.g. ``./ci/code_checks.sh doctests``).
+- ``./ci/code_checks.sh``: a script validates the doctests, formatting in docstrings,
+  and imported modules. It is possible to run the checks independently by using the
+  parameters ``docstrings``, ``code``, and ``doctests``
+  (e.g. ``./ci/code_checks.sh doctests``);
+- ``pre-commit``, which we go into detail on in the next section.
 
 In addition, because a lot of people use our library, it is important that we
 do not make sudden changes to the code that could have the potential to break
 a lot of user code as a result, that is, we need it to be as *backwards compatible*
 as possible to avoid mass breakages.
 
-In addition to ``./ci/code_checks.sh``, some extra checks are run by
-``pre-commit`` - see :ref:`here <contributing.pre-commit>` for how to
-run them.
-
-Additional standards are outlined on the :ref:`pandas code style guide <code_style>`.
-
 .. _contributing.pre-commit:
 
 Pre-commit
 ----------
 
-You can run many of these styling checks manually as we have described above. However,
-we encourage you to use `pre-commit hooks <https://pre-commit.com/>`_ instead
-to automatically run ``black``, ``flake8``, ``isort`` when you make a git commit. This
-can be done by installing ``pre-commit``::
-
-    pip install pre-commit
-
-and then running::
+Additionally, :ref:`Continuous Integration <contributing.ci>` will run code formatting checks
+like ``ruff``,
+``isort``, and ``clang-format`` and more using `pre-commit hooks <https://pre-commit.com/>`_.
+Any warnings from these checks will cause the :ref:`Continuous Integration <contributing.ci>` to fail; therefore,
+it is helpful to run the check yourself before submitting code. This
+can be done by installing ``pre-commit`` (which should already have happened if you followed the instructions
+in :ref:`Setting up your development environment <contributing_environment>`) and then running::
 
     pre-commit install
 
@@ -63,17 +55,22 @@ remain up-to-date with our code checks as they change.
 Note that if needed, you can skip these checks with ``git commit --no-verify``.
 
 If you don't want to use ``pre-commit`` as part of your workflow, you can still use it
-to run its checks with::
+to run its checks with one of the following::
 
     pre-commit run --files <files you have modified>
+    pre-commit run --from-ref=upstream/main --to-ref=HEAD --all-files
 
 without needing to have done ``pre-commit install`` beforehand.
 
-If you want to run checks on all recently committed files on upstream/master you can use::
+Finally, we also have some slow pre-commit checks, which don't run on each commit
+but which do run during continuous integration. You can trigger them manually with::
 
-    pre-commit run --from-ref=upstream/master --to-ref=HEAD --all-files
+    pre-commit run --hook-stage manual --all-files
 
-without needing to have done ``pre-commit install`` beforehand.
+.. note::
+
+    You may want to periodically run ``pre-commit gc``, to clean up repos
+    which are no longer used.
 
 .. note::
 
@@ -83,6 +80,12 @@ without needing to have done ``pre-commit install`` beforehand.
     Also, due to a `bug in virtualenv <https://github.com/pypa/virtualenv/issues/1986>`_,
     you may run into issues if you're using conda. To solve this, you can downgrade
     ``virtualenv`` to version ``20.0.33``.
+
+.. note::
+
+    If you have recently merged in main from the upstream branch, some of the
+    dependencies used by ``pre-commit`` may have changed.  Make sure to
+    :ref:`update your development environment <contributing.update-dev>`.
 
 Optional dependencies
 ---------------------
@@ -99,157 +102,8 @@ All optional dependencies should be documented in
 :ref:`install.optional_dependencies` and the minimum required version should be
 set in the ``pandas.compat._optional.VERSIONS`` dict.
 
-C (cpplint)
-~~~~~~~~~~~
-
-pandas uses the `Google <https://google.github.io/styleguide/cppguide.html>`_
-standard. Google provides an open source style checker called ``cpplint``, but we
-use a fork of it that can be found `here <https://github.com/cpplint/cpplint>`__.
-Here are *some* of the more common ``cpplint`` issues:
-
-* we restrict line-length to 80 characters to promote readability
-* every header file must include a header guard to avoid name collisions if re-included
-
-:ref:`Continuous Integration <contributing.ci>` will run the
-`cpplint <https://pypi.org/project/cpplint>`_ tool
-and report any stylistic errors in your code. Therefore, it is helpful before
-submitting code to run the check yourself::
-
-   cpplint --extensions=c,h --headers=h --filter=-readability/casting,-runtime/int,-build/include_subdir modified-c-file
-
-You can also run this command on an entire directory if necessary::
-
-   cpplint --extensions=c,h --headers=h --filter=-readability/casting,-runtime/int,-build/include_subdir --recursive modified-c-directory
-
-To make your commits compliant with this standard, you can install the
-`ClangFormat <https://clang.llvm.org/docs/ClangFormat.html>`_ tool, which can be
-downloaded `here <https://llvm.org/builds/>`__. To configure, in your home directory,
-run the following command::
-
-    clang-format style=google -dump-config  > .clang-format
-
-Then modify the file to ensure that any indentation width parameters are at least four.
-Once configured, you can run the tool as follows::
-
-    clang-format modified-c-file
-
-This will output what your file will look like if the changes are made, and to apply
-them, run the following command::
-
-    clang-format -i modified-c-file
-
-To run the tool on an entire directory, you can run the following analogous commands::
-
-    clang-format modified-c-directory/*.c modified-c-directory/*.h
-    clang-format -i modified-c-directory/*.c modified-c-directory/*.h
-
-Do note that this tool is best-effort, meaning that it will try to correct as
-many errors as possible, but it may not correct *all* of them. Thus, it is
-recommended that you run ``cpplint`` to double check and make any other style
-fixes manually.
-
-.. _contributing.code-formatting:
-
-Python (PEP8 / black)
-~~~~~~~~~~~~~~~~~~~~~
-
-pandas follows the `PEP8 <https://www.python.org/dev/peps/pep-0008/>`_ standard
-and uses `Black <https://black.readthedocs.io/en/stable/>`_ and
-`Flake8 <http://flake8.pycqa.org/en/latest/>`_ to ensure a consistent code
-format throughout the project. We encourage you to use :ref:`pre-commit <contributing.pre-commit>`.
-
-:ref:`Continuous Integration <contributing.ci>` will run those tools and
-report any stylistic errors in your code. Therefore, it is helpful before
-submitting code to run the check yourself::
-
-   black pandas
-   git diff upstream/master -u -- "*.py" | flake8 --diff
-
-to auto-format your code. Additionally, many editors have plugins that will
-apply ``black`` as you edit files.
-
-You should use a ``black`` version 21.5b2 as previous versions are not compatible
-with the pandas codebase.
-
-One caveat about ``git diff upstream/master -u -- "*.py" | flake8 --diff``: this
-command will catch any stylistic errors in your changes specifically, but
-be beware it may not catch all of them. For example, if you delete the only
-usage of an imported function, it is stylistically incorrect to import an
-unused function. However, style-checking the diff will not catch this because
-the actual import is not part of the diff. Thus, for completeness, you should
-run this command, though it may take longer::
-
-   git diff upstream/master --name-only -- "*.py" | xargs -r flake8
-
-Note that on macOS, the ``-r`` flag is not available, so you have to omit it and
-run this slightly modified command::
-
-   git diff upstream/master --name-only -- "*.py" | xargs flake8
-
-Windows does not support the ``xargs`` command (unless installed for example
-via the `MinGW <http://www.mingw.org/>`__ toolchain), but one can imitate the
-behaviour as follows::
-
-    for /f %i in ('git diff upstream/master --name-only -- "*.py"') do flake8 %i
-
-This will get all the files being changed by the PR (and ending with ``.py``),
-and run ``flake8`` on them, one after the other.
-
-Note that these commands can be run analogously with ``black``.
-
-.. _contributing.import-formatting:
-
-Import formatting
-~~~~~~~~~~~~~~~~~
-pandas uses `isort <https://pypi.org/project/isort/>`__ to standardise import
-formatting across the codebase.
-
-A guide to import layout as per pep8 can be found `here <https://www.python.org/dev/peps/pep-0008/#imports/>`__.
-
-A summary of our current import sections ( in order ):
-
-* Future
-* Python Standard Library
-* Third Party
-* ``pandas._libs``, ``pandas.compat``, ``pandas.util._*``, ``pandas.errors`` (largely not dependent on ``pandas.core``)
-* ``pandas.core.dtypes`` (largely not dependent on the rest of ``pandas.core``)
-* Rest of ``pandas.core.*``
-* Non-core ``pandas.io``, ``pandas.plotting``, ``pandas.tseries``
-* Local application/library specific imports
-
-Imports are alphabetically sorted within these sections.
-
-As part of :ref:`Continuous Integration <contributing.ci>` checks we run::
-
-    isort --check-only pandas
-
-to check that imports are correctly formatted as per the ``setup.cfg``.
-
-If you see output like the below in :ref:`Continuous Integration <contributing.ci>` checks:
-
-.. code-block:: shell
-
-   Check import format using isort
-   ERROR: /home/travis/build/pandas-dev/pandas/pandas/io/pytables.py Imports are incorrectly sorted
-   Check import format using isort DONE
-   The command "ci/code_checks.sh" exited with 1
-
-You should run::
-
-    isort pandas/io/pytables.py
-
-to automatically format imports correctly. This will modify your local copy of the files.
-
-Alternatively, you can run a command similar to what was suggested for ``black`` and ``flake8`` :ref:`right above <contributing.code-formatting>`::
-
-    git diff upstream/master --name-only -- "*.py" | xargs -r isort
-
-Where similar caveats apply if you are on macOS or Windows.
-
-You can then verify the changes look ok, then git :any:`commit <contributing.commit-code>` and :any:`push <contributing.push-code>`.
-
 Backwards compatibility
-~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------
 
 Please try to maintain backward compatibility. pandas has lots of users with lots of
 existing code, so don't break it if at all possible.  If you think breakage is required,
@@ -271,6 +125,7 @@ Otherwise, you need to do it manually:
 .. code-block:: python
 
     import warnings
+    from pandas.util._exceptions import find_stack_level
 
 
     def old_func():
@@ -279,7 +134,11 @@ Otherwise, you need to do it manually:
         .. deprecated:: 1.1.0
            Use new_func instead.
         """
-        warnings.warn('Use new_func instead.', FutureWarning, stacklevel=2)
+        warnings.warn(
+            'Use new_func instead.',
+            FutureWarning,
+            stacklevel=find_stack_level(),
+        )
         new_func()
 
 
@@ -303,33 +162,9 @@ pandas strongly encourages the use of :pep:`484` style type hints. New developme
 Style guidelines
 ~~~~~~~~~~~~~~~~
 
-Types imports should follow the ``from typing import ...`` convention. So rather than
-
-.. code-block:: python
-
-   import typing
-
-   primes: typing.List[int] = []
-
-You should write
-
-.. code-block:: python
-
-   from typing import List, Optional, Union
-
-   primes: List[int] = []
-
-``Optional`` should be used where applicable, so instead of
-
-.. code-block:: python
-
-   maybe_primes: List[Union[int, None]] = []
-
-You should write
-
-.. code-block:: python
-
-   maybe_primes: List[Optional[int]] = []
+Type imports should follow the ``from typing import ...`` convention.
+Your code may be automatically re-written to use some modern constructs (e.g. using the built-in ``list`` instead of ``typing.List``)
+by the :ref:`pre-commit checks <contributing.pre-commit>`.
 
 In some cases in the code base classes may define class variables that shadow builtins. This causes an issue as described in `Mypy 1775 <https://github.com/python/mypy/issues/1775#issuecomment-310969854>`_. The defensive solution here is to create an unambiguous alias of the builtin and use that without your annotation. For example, if you come across a definition like
 
@@ -361,7 +196,7 @@ In some cases you may be tempted to use ``cast`` from the typing module when you
            ...
        else:  # Reasonably only str objects would reach this but...
            obj = cast(str, obj)  # Mypy complains without this!
-	   return obj.upper()
+           return obj.upper()
 
 The limitation here is that while a human can reasonably understand that ``is_number`` would catch the ``int`` and ``float`` types mypy cannot make that same inference just yet (see `mypy #5206 <https://github.com/python/mypy/issues/5206>`_. While the above works, the use of ``cast`` is **strongly discouraged**. Where applicable a refactor of the code to appease static analysis is preferable
 
@@ -379,7 +214,7 @@ With custom types and inference this is not always possible so exceptions are ma
 pandas-specific types
 ~~~~~~~~~~~~~~~~~~~~~
 
-Commonly used types specific to pandas will appear in `pandas._typing <https://github.com/pandas-dev/pandas/blob/master/pandas/_typing.py>`_ and you should use these where applicable. This module is private for now but ultimately this should be exposed to third party libraries who want to implement type checking against pandas.
+Commonly used types specific to pandas will appear in `pandas._typing <https://github.com/pandas-dev/pandas/blob/main/pandas/_typing.py>`_ and you should use these where applicable. This module is private for now but ultimately this should be exposed to third party libraries who want to implement type checking against pandas.
 
 For example, quite a few functions in pandas accept a ``dtype`` argument. This can be expressed as a string like ``"object"``, a ``numpy.dtype`` like ``np.int64`` or even a pandas ``ExtensionDtype`` like ``pd.CategoricalDtype``. Rather than burden the user with having to constantly annotate all of those options, this can simply be imported and reused from the pandas._typing module
 
@@ -395,31 +230,52 @@ This module will ultimately house types for repeatedly used concepts like "path-
 Validating type hints
 ~~~~~~~~~~~~~~~~~~~~~
 
-pandas uses `mypy <http://mypy-lang.org>`_ and `pyright <https://github.com/microsoft/pyright>`_ to statically analyze the code base and type hints. After making any change you can ensure your type hints are correct by running
+pandas uses `mypy <http://mypy-lang.org>`_ and `pyright <https://github.com/microsoft/pyright>`_ to statically analyze the code base and type hints. After making any change you can ensure your type hints are consistent by running
 
 .. code-block:: shell
 
-   mypy
+    pre-commit run --hook-stage manual --all-files mypy
+    pre-commit run --hook-stage manual --all-files pyright
+    pre-commit run --hook-stage manual --all-files pyright_reportGeneralTypeIssues
+    # the following might fail if the installed pandas version does not correspond to your local git version
+    pre-commit run --hook-stage manual --all-files stubtest
 
-   # let pre-commit setup and run pyright
-   pre-commit run --hook-stage manual --all-files pyright
-   # or if pyright is installed (requires node.js)
-   pyright
+in your python environment.
 
-A recent version of ``numpy`` (>=1.21.0) is required for type validation.
+.. warning::
+
+    * Please be aware that the above commands will use the current python environment. If your python packages are older/newer than those installed by the pandas CI, the above commands might fail. This is often the case when the ``mypy`` or ``numpy`` versions do not match. Please see :ref:`how to setup the python environment <contributing.mamba>` or select a `recently succeeded workflow <https://github.com/pandas-dev/pandas/actions/workflows/code-checks.yml?query=branch%3Amain+is%3Asuccess>`_, select the "Docstring validation, typing, and other manual pre-commit hooks" job, then click on "Set up Conda" and "Environment info" to see which versions the pandas CI installs.
 
 .. _contributing.ci:
+
+Testing type hints in code using pandas
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. warning::
+
+    * pandas is not yet a py.typed library (:pep:`561`)!
+      The primary purpose of locally declaring pandas as a py.typed library is to test and
+      improve the pandas-builtin type annotations.
+
+Until pandas becomes a py.typed library, it is possible to easily experiment with the type
+annotations shipped with pandas by creating an empty file named "py.typed" in the pandas
+installation folder:
+
+.. code-block:: none
+
+   python -c "import pandas; import pathlib; (pathlib.Path(pandas.__path__[0]) / 'py.typed').touch()"
+
+The existence of the py.typed file signals to type checkers that pandas is already a py.typed
+library. This makes type checkers aware of the type annotations shipped with pandas.
 
 Testing with continuous integration
 -----------------------------------
 
-The pandas test suite will run automatically on `GitHub Actions <https://github.com/features/actions/>`__ and
-`Azure Pipelines <https://azure.microsoft.com/en-us/services/devops/pipelines/>`__
+The pandas test suite will run automatically on `GitHub Actions <https://github.com/features/actions/>`__
 continuous integration services, once your pull request is submitted.
 However, if you wish to run the test suite on a branch prior to submitting the pull request,
 then the continuous integration services need to be hooked to your GitHub repository. Instructions are here
-for `GitHub Actions <https://docs.github.com/en/actions/>`__ and
-`Azure Pipelines <https://docs.microsoft.com/en-us/azure/devops/pipelines/>`__.
+for `GitHub Actions <https://docs.github.com/en/actions/>`__.
 
 A pull-request will be considered for merging when you have an all 'green' build. If any tests are failing,
 then you will get a red 'X', where you can click through to see the individual failed tests.
@@ -430,8 +286,8 @@ This is an example of a green build.
 .. _contributing.tdd:
 
 
-Test-driven development/code writing
-------------------------------------
+Test-driven development
+-----------------------
 
 pandas is serious about testing and strongly encourages contributors to embrace
 `test-driven development (TDD) <https://en.wikipedia.org/wiki/Test-driven_development>`_.
@@ -445,61 +301,211 @@ use cases and writing corresponding tests.
 Adding tests is one of the most common requests after code is pushed to pandas.  Therefore,
 it is worth getting in the habit of writing tests ahead of time so this is never an issue.
 
-Like many packages, pandas uses `pytest
-<https://docs.pytest.org/en/latest/>`_ and the convenient
-extensions in `numpy.testing
-<https://numpy.org/doc/stable/reference/routines.testing.html>`_.
-
-.. note::
-
-   The earliest supported pytest version is 5.0.1.
-
 Writing tests
 ~~~~~~~~~~~~~
 
 All tests should go into the ``tests`` subdirectory of the specific package.
 This folder contains many current examples of tests, and we suggest looking to these for
-inspiration.  If your test requires working with files or
-network connectivity, there is more information on the `testing page
-<https://github.com/pandas-dev/pandas/wiki/Testing>`_ of the wiki.
+inspiration.
 
-The ``pandas._testing`` module has many special ``assert`` functions that
-make it easier to make statements about whether Series or DataFrame objects are
-equivalent. The easiest way to verify that your code is correct is to
-explicitly construct the result you expect, then compare the actual result to
-the expected correct result::
+As a general tip, you can use the search functionality in your integrated development
+environment (IDE) or the git grep command in a terminal to find test files in which the method
+is called. If you are unsure of the best location to put your test, take your best guess,
+but note that reviewers may request that you move the test to a different location.
 
-    def test_pivot(self):
-        data = {
-            'index' : ['A', 'B', 'C', 'C', 'B', 'A'],
-            'columns' : ['One', 'One', 'One', 'Two', 'Two', 'Two'],
-            'values' : [1., 2., 3., 3., 2., 1.]
-        }
+To use git grep, you can run the following command in a terminal:
 
-        frame = DataFrame(data)
-        pivoted = frame.pivot(index='index', columns='columns', values='values')
+``git grep "function_name("``
 
-        expected = DataFrame({
-            'One' : {'A' : 1., 'B' : 2., 'C' : 3.},
-            'Two' : {'A' : 1., 'B' : 2., 'C' : 3.}
-        })
+This will search through all files in your repository for the text ``function_name(``.
+This can be a useful way to quickly locate the function in the
+codebase and determine the best location to add a test for it.
 
-        assert_frame_equal(pivoted, expected)
+Ideally, there should be one, and only one, obvious place for a test to reside.
+Until we reach that ideal, these are some rules of thumb for where a test should
+be located.
 
-Please remember to add the Github Issue Number as a comment to a new test.
-E.g. "# brief comment, see GH#28907"
+1. Does your test depend only on code in ``pd._libs.tslibs``?
+   This test likely belongs in one of:
 
-Transitioning to ``pytest``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   - tests.tslibs
+
+     .. note::
+
+          No file in ``tests.tslibs`` should import from any pandas modules
+          outside of ``pd._libs.tslibs``
+
+   - tests.scalar
+   - tests.tseries.offsets
+
+2. Does your test depend only on code in pd._libs?
+   This test likely belongs in one of:
+
+   - tests.libs
+   - tests.groupby.test_libgroupby
+
+3. Is your test for an arithmetic or comparison method?
+   This test likely belongs in one of:
+
+   - tests.arithmetic
+
+     .. note::
+
+         These are intended for tests that can be shared to test the behavior
+         of DataFrame/Series/Index/ExtensionArray using the ``box_with_array``
+         fixture.
+
+   - tests.frame.test_arithmetic
+   - tests.series.test_arithmetic
+
+4. Is your test for a reduction method (min, max, sum, prod, ...)?
+   This test likely belongs in one of:
+
+   - tests.reductions
+
+     .. note::
+
+         These are intended for tests that can be shared to test the behavior
+         of DataFrame/Series/Index/ExtensionArray.
+
+   - tests.frame.test_reductions
+   - tests.series.test_reductions
+   - tests.test_nanops
+
+5. Is your test for an indexing method?
+   This is the most difficult case for deciding where a test belongs, because
+   there are many of these tests, and many of them test more than one method
+   (e.g. both ``Series.__getitem__`` and ``Series.loc.__getitem__``)
+
+   A) Is the test specifically testing an Index method (e.g. ``Index.get_loc``,
+      ``Index.get_indexer``)?
+      This test likely belongs in one of:
+
+      - tests.indexes.test_indexing
+      - tests.indexes.fooindex.test_indexing
+
+      Within that files there should be a method-specific test class e.g.
+      ``TestGetLoc``.
+
+      In most cases, neither ``Series`` nor ``DataFrame`` objects should be
+      needed in these tests.
+
+   B) Is the test for a Series or DataFrame indexing method *other* than
+      ``__getitem__`` or ``__setitem__``, e.g. ``xs``, ``where``, ``take``,
+      ``mask``, ``lookup``, or ``insert``?
+      This test likely belongs in one of:
+
+      - tests.frame.indexing.test_methodname
+      - tests.series.indexing.test_methodname
+
+   C) Is the test for any of ``loc``, ``iloc``, ``at``, or ``iat``?
+      This test likely belongs in one of:
+
+      - tests.indexing.test_loc
+      - tests.indexing.test_iloc
+      - tests.indexing.test_at
+      - tests.indexing.test_iat
+
+      Within the appropriate file, test classes correspond to either types of
+      indexers (e.g. ``TestLocBooleanMask``) or major use cases
+      (e.g. ``TestLocSetitemWithExpansion``).
+
+      See the note in section D) about tests that test multiple indexing methods.
+
+   D) Is the test for ``Series.__getitem__``, ``Series.__setitem__``,
+      ``DataFrame.__getitem__``, or ``DataFrame.__setitem__``?
+      This test likely belongs in one of:
+
+      - tests.series.test_getitem
+      - tests.series.test_setitem
+      - tests.frame.test_getitem
+      - tests.frame.test_setitem
+
+      If many cases such a test may test multiple similar methods, e.g.
+
+      .. code-block:: python
+
+           import pandas as pd
+           import pandas._testing as tm
+
+           def test_getitem_listlike_of_ints():
+               ser = pd.Series(range(5))
+
+               result = ser[[3, 4]]
+               expected = pd.Series([2, 3])
+               tm.assert_series_equal(result, expected)
+
+               result = ser.loc[[3, 4]]
+               tm.assert_series_equal(result, expected)
+
+    In cases like this, the test location should be based on the *underlying*
+    method being tested.  Or in the case of a test for a bugfix, the location
+    of the actual bug.  So in this example, we know that ``Series.__getitem__``
+    calls ``Series.loc.__getitem__``, so this is *really* a test for
+    ``loc.__getitem__``.  So this test belongs in ``tests.indexing.test_loc``.
+
+6. Is your test for a DataFrame or Series method?
+
+   A) Is the method a plotting method?
+      This test likely belongs in one of:
+
+      - tests.plotting
+
+   B) Is the method an IO method?
+      This test likely belongs in one of:
+
+      - tests.io
+
+        .. note::
+
+            This includes ``to_string`` but excludes ``__repr__``, which is
+            tested in ``tests.frame.test_repr`` and ``tests.series.test_repr``.
+            Other classes often have a ``test_formats`` file.
+
+   C) Otherwise
+      This test likely belongs in one of:
+
+      - tests.series.methods.test_mymethod
+      - tests.frame.methods.test_mymethod
+
+        .. note::
+
+            If a test can be shared between DataFrame/Series using the
+            ``frame_or_series`` fixture, by convention it goes in the
+            ``tests.frame`` file.
+
+7. Is your test for an Index method, not depending on Series/DataFrame?
+   This test likely belongs in one of:
+
+   - tests.indexes
+
+8) Is your test for one of the pandas-provided ExtensionArrays (``Categorical``,
+   ``DatetimeArray``, ``TimedeltaArray``, ``PeriodArray``, ``IntervalArray``,
+   ``NumpyExtensionArray``, ``FloatArray``, ``BoolArray``, ``StringArray``)?
+   This test likely belongs in one of:
+
+   - tests.arrays
+
+9) Is your test for *all* ExtensionArray subclasses (the "EA Interface")?
+   This test likely belongs in one of:
+
+   - tests.extension
+
+Using ``pytest``
+~~~~~~~~~~~~~~~~
+
+Test structure
+^^^^^^^^^^^^^^
 
 pandas existing test structure is *mostly* class-based, meaning that you will typically find tests wrapped in a class.
 
 .. code-block:: python
 
-    class TestReallyCoolFeature:
-        pass
+   class TestReallyCoolFeature:
+       def test_cool_feature_aspect(self):
+           pass
 
-Going forward, we are moving to a more *functional* style using the `pytest <https://docs.pytest.org/en/latest/>`__ framework, which offers a richer testing
+We prefer a more *functional* style using the `pytest <https://docs.pytest.org/en/latest/>`__ framework, which offers a richer testing
 framework that will facilitate testing and developing. Thus, instead of writing test classes, we will write test functions like this:
 
 .. code-block:: python
@@ -507,21 +513,120 @@ framework that will facilitate testing and developing. Thus, instead of writing 
     def test_really_cool_feature():
         pass
 
-Using ``pytest``
-~~~~~~~~~~~~~~~~
+Preferred ``pytest`` idioms
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Here is an example of a self-contained set of tests that illustrate multiple features that we like to use.
+* Functional tests named ``def test_*`` and *only* take arguments that are either fixtures or parameters.
+* Use a bare ``assert`` for testing scalars and truth-testing
+* Use ``tm.assert_series_equal(result, expected)`` and ``tm.assert_frame_equal(result, expected)`` for comparing :class:`Series` and :class:`DataFrame` results respectively.
+* Use `@pytest.mark.parameterize <https://docs.pytest.org/en/latest/how-to/parametrize.html>`__ when testing multiple cases.
+* Use `pytest.mark.xfail <https://docs.pytest.org/en/latest/reference/reference.html?#pytest.mark.xfail>`__ when a test case is expected to fail.
+* Use `pytest.mark.skip <https://docs.pytest.org/en/latest/reference/reference.html?#pytest.mark.skip>`__ when a test case is never expected to pass.
+* Use `pytest.param <https://docs.pytest.org/en/latest/reference/reference.html?#pytest-param>`__ when a test case needs a particular mark.
+* Use `@pytest.fixture <https://docs.pytest.org/en/latest/reference/reference.html?#pytest-fixture>`__ if multiple tests can share a setup object.
 
-* functional style: tests are like ``test_*`` and *only* take arguments that are either fixtures or parameters
-* ``pytest.mark`` can be used to set metadata on test functions, e.g. ``skip`` or ``xfail``.
-* using ``parametrize``: allow testing of multiple cases
-* to set a mark on a parameter, ``pytest.param(..., marks=...)`` syntax should be used
-* ``fixture``, code for object construction, on a per-test basis
-* using bare ``assert`` for scalars and truth-testing
-* ``tm.assert_series_equal`` (and its counter part ``tm.assert_frame_equal``), for pandas object comparisons.
-* the typical pattern of constructing an ``expected`` and comparing versus the ``result``
+.. warning::
 
-We would name this file ``test_cool_feature.py`` and put in an appropriate place in the ``pandas/tests/`` structure.
+    Do not use ``pytest.xfail`` (which is different than ``pytest.mark.xfail``) since it immediately stops the
+    test and does not check if the test will fail. If this is the behavior you desire, use ``pytest.skip`` instead.
+
+If a test is known to fail but the manner in which it fails
+is not meant to be captured, use ``pytest.mark.xfail`` It is common to use this method for a test that
+exhibits buggy behavior or a non-implemented feature. If
+the failing test has flaky behavior, use the argument ``strict=False``. This
+will make it so pytest does not fail if the test happens to pass. Using ``strict=False`` is highly undesirable, please use it only as a last resort.
+
+Prefer the decorator ``@pytest.mark.xfail`` and the argument ``pytest.param``
+over usage within a test so that the test is appropriately marked during the
+collection phase of pytest. For xfailing a test that involves multiple
+parameters, a fixture, or a combination of these, it is only possible to
+xfail during the testing phase. To do so, use the ``request`` fixture:
+
+.. code-block:: python
+
+    def test_xfail(request):
+        mark = pytest.mark.xfail(raises=TypeError, reason="Indicate why here")
+        request.applymarker(mark)
+
+xfail is not to be used for tests involving failure due to invalid user arguments.
+For these tests, we need to verify the correct exception type and error message
+is being raised, using ``pytest.raises`` instead.
+
+.. _contributing.warnings:
+
+Testing a warning
+^^^^^^^^^^^^^^^^^
+
+Use ``tm.assert_produces_warning`` as a context manager to check that a block of code raises a warning.
+
+.. code-block:: python
+
+    with tm.assert_produces_warning(DeprecationWarning):
+        pd.deprecated_function()
+
+If a warning should specifically not happen in a block of code, pass ``False`` into the context manager.
+
+.. code-block:: python
+
+    with tm.assert_produces_warning(False):
+        pd.no_warning_function()
+
+If you have a test that would emit a warning, but you aren't actually testing the
+warning itself (say because it's going to be removed in the future, or because we're
+matching a 3rd-party library's behavior), then use ``pytest.mark.filterwarnings`` to
+ignore the error.
+
+.. code-block:: python
+
+    @pytest.mark.filterwarnings("ignore:msg:category")
+    def test_thing(self):
+        pass
+
+Testing an exception
+^^^^^^^^^^^^^^^^^^^^
+
+Use `pytest.raises <https://docs.pytest.org/en/latest/reference/reference.html#pytest-raises>`_ as a context manager
+with the specific exception subclass (i.e. never use :py:class:`Exception`) and the exception message in ``match``.
+
+.. code-block:: python
+
+    with pytest.raises(ValueError, match="an error"):
+        raise ValueError("an error")
+
+Testing involving files
+^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``temp_file`` pytest fixture creates a temporary file :py:class:`Pathlib` object for testing:
+
+.. code-block:: python
+
+    def test_something(temp_file):
+        pd.DataFrame([1]).to_csv(str(temp_file))
+
+Please reference `pytest's documentation <https://docs.pytest.org/en/latest/how-to/tmp_path.html#the-default-base-temporary-directory>`_
+for the file retension policy.
+
+Testing involving network connectivity
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A unit test should not access a public data set over the internet due to flakiness of network connections and
+lack of ownership of the server that is being connected to. To mock this interaction, use the ``httpserver`` fixture from the
+`pytest-localserver plugin. <https://github.com/pytest-dev/pytest-localserver>`_ with synthetic data.
+
+.. code-block:: python
+
+    @pytest.mark.network
+    @pytest.mark.single_cpu
+    def test_network(httpserver):
+        httpserver.serve_content(content="content")
+        result = pd.read_html(httpserver.url)
+
+Example
+^^^^^^^
+
+Here is an example of a self-contained set of tests in a file ``pandas/tests/test_cool_feature.py``
+that illustrate multiple features that we like to use. Please remember to add the GitHub Issue Number
+as a comment to a new test.
 
 .. code-block:: python
 
@@ -554,6 +659,7 @@ We would name this file ``test_cool_feature.py`` and put in an appropriate place
 
 
    def test_series(series, dtype):
+       # GH <issue_number>
        result = series.astype(dtype)
        assert result.dtype == dtype
 
@@ -601,7 +707,7 @@ Tests that we have ``parametrized`` are now accessible via the test name, for ex
 Using ``hypothesis``
 ~~~~~~~~~~~~~~~~~~~~
 
-Hypothesis is a library for property-based testing.  Instead of explicitly
+Hypothesis is a library for property-based testing. Instead of explicitly
 parametrizing a test, you can describe *all* valid inputs and let Hypothesis
 try to find a failing input.  Even better, no matter how many random examples
 it tries, Hypothesis always reports a single minimal counterexample to your
@@ -636,59 +742,7 @@ preferred if the inputs or logic are simple, with Hypothesis tests reserved
 for cases with complex logic or where there are too many combinations of
 options or subtle interactions to test (or think of!) all of them.
 
-.. _contributing.warnings:
-
-Testing warnings
-~~~~~~~~~~~~~~~~
-
-By default, one of pandas CI workers will fail if any unhandled warnings are emitted.
-
-If your change involves checking that a warning is actually emitted, use
-``tm.assert_produces_warning(ExpectedWarning)``.
-
-
-.. code-block:: python
-
-   import pandas._testing as tm
-
-
-   df = pd.DataFrame()
-   with tm.assert_produces_warning(FutureWarning):
-       df.some_operation()
-
-We prefer this to the ``pytest.warns`` context manager because ours checks that the warning's
-stacklevel is set correctly. The stacklevel is what ensure the *user's* file name and line number
-is printed in the warning, rather than something internal to pandas. It represents the number of
-function calls from user code (e.g. ``df.some_operation()``) to the function that actually emits
-the warning. Our linter will fail the build if you use ``pytest.warns`` in a test.
-
-If you have a test that would emit a warning, but you aren't actually testing the
-warning itself (say because it's going to be removed in the future, or because we're
-matching a 3rd-party library's behavior), then use ``pytest.mark.filterwarnings`` to
-ignore the error.
-
-.. code-block:: python
-
-   @pytest.mark.filterwarnings("ignore:msg:category")
-   def test_thing(self):
-       ...
-
-If the test generates a warning of class ``category`` whose message starts
-with ``msg``, the warning will be ignored and the test will pass.
-
-If you need finer-grained control, you can use Python's usual
-`warnings module <https://docs.python.org/3/library/warnings.html>`__
-to control whether a warning is ignored / raised at different places within
-a single test.
-
-.. code-block:: python
-
-   with warnings.catch_warnings():
-       warnings.simplefilter("ignore", FutureWarning)
-       # Or use warnings.filterwarnings(...)
-
-Alternatively, consider breaking up the unit test.
-
+.. _contributing.running_tests:
 
 Running the test suite
 ----------------------
@@ -698,9 +752,17 @@ install pandas) by typing::
 
     pytest pandas
 
-The tests suite is exhaustive and takes around 20 minutes to run.  Often it is
-worth running only a subset of tests first around your changes before running the
-entire suite.
+.. note::
+
+    If a handful of tests don't pass, it may not be an issue with your pandas installation.
+    Some tests (e.g. some SQLAlchemy ones) require additional setup, others might start
+    failing because a non-pinned library released a new version, and others might be flaky
+    if run in parallel. As long as you can import pandas from your locally built version,
+    your installation is probably fine and you can start contributing!
+
+Often it is worth running only a subset of tests first around your changes before running the
+entire suite (tip: you can use the `pandas-coverage app <https://pandas-coverage-12d2130077bc.herokuapp.com/>`_)
+to find out which tests hit the lines of code you've modified, and then run only those).
 
 The easiest way to do this is with::
 
@@ -712,25 +774,71 @@ Or with one of the following constructs::
     pytest pandas/tests/[test-module].py::[TestClass]
     pytest pandas/tests/[test-module].py::[TestClass]::[test_method]
 
-Using `pytest-xdist <https://pypi.org/project/pytest-xdist>`_, one can
-speed up local testing on multicore machines. To use this feature, you will
-need to install ``pytest-xdist`` via::
+Using `pytest-xdist <https://pypi.org/project/pytest-xdist>`_, which is
+included in our 'pandas-dev' environment, one can speed up local testing on
+multicore machines. The ``-n`` number flag then can be specified when running
+pytest to parallelize a test run across the number of specified cores or auto to
+utilize all the available cores on your machine.
 
-    pip install pytest-xdist
+.. code-block:: bash
 
-Two scripts are provided to assist with this.  These scripts distribute
-testing across 4 threads.
+   # Utilize 4 cores
+   pytest -n 4 pandas
 
-On Unix variants, one can type::
+   # Utilizes all available cores
+   pytest -n auto pandas
 
-    test_fast.sh
+If you'd like to speed things along further a more advanced use of this
+command would look like this
 
-On Windows, one can type::
+.. code-block:: bash
 
-    test_fast.bat
+    pytest pandas -n 4 -m "not slow and not network and not db and not single_cpu" -r sxX
 
-This can significantly reduce the time it takes to locally run tests before
-submitting a pull request.
+In addition to the multithreaded performance increase this improves test
+speed by skipping some tests using the ``-m`` mark flag:
+
+- slow: any test taking long (think seconds rather than milliseconds)
+- network: tests requiring network connectivity
+- db: tests requiring a database (mysql or postgres)
+- single_cpu: tests that should run on a single cpu only
+
+You might want to enable the following option if it's relevant for you:
+
+- arm_slow: any test taking long on arm64 architecture
+
+These markers are defined `in this toml file <https://github.com/pandas-dev/pandas/blob/main/pyproject.toml>`_
+, under ``[tool.pytest.ini_options]`` in a list called ``markers``, in case
+you want to check if new ones have been created which are of interest to you.
+
+The ``-r`` report flag will display a short summary info (see `pytest
+documentation <https://docs.pytest.org/en/4.6.x/usage.html#detailed-summary-report>`_)
+. Here we are displaying the number of:
+
+- s: skipped tests
+- x: xfailed tests
+- X: xpassed tests
+
+The summary is optional and can be removed if you don't need the added
+information. Using the parallelization option can significantly reduce the
+time it takes to locally run tests before submitting a pull request.
+
+If you require assistance with the results,
+which has happened in the past, please set a seed before running the command
+and opening a bug report, that way we can reproduce it. Here's an example
+for setting a seed on windows
+
+.. code-block:: bash
+
+    set PYTHONHASHSEED=314159265
+    pytest pandas -n 4 -m "not slow and not network and not db and not single_cpu" -r sxX
+
+On Unix use
+
+.. code-block:: bash
+
+    export PYTHONHASHSEED=314159265
+    pytest pandas -n 4 -m "not slow and not network and not db and not single_cpu" -r sxX
 
 For more, see the `pytest <https://docs.pytest.org/en/latest/>`_ documentation.
 
@@ -747,10 +855,10 @@ Running the performance test suite
 
 Performance matters and it is worth considering whether your code has introduced
 performance regressions. pandas is in the process of migrating to
-`asv benchmarks <https://github.com/spacetelescope/asv>`__
+`asv benchmarks <https://github.com/airspeed-velocity/asv>`__
 to enable easy monitoring of the performance of critical pandas operations.
 These benchmarks are all found in the ``pandas/asv_bench`` directory, and the
-test results can be found `here <https://pandas.pydata.org/speed/pandas/#/>`__.
+test results can be found `here <https://asv-runner.github.io/asv-collection/pandas>`__.
 
 To use all features of asv, you will need either ``conda`` or
 ``virtualenv``. For more details please check the `asv installation
@@ -758,18 +866,18 @@ webpage <https://asv.readthedocs.io/en/latest/installing.html>`_.
 
 To install asv::
 
-    pip install git+https://github.com/spacetelescope/asv
+    pip install git+https://github.com/airspeed-velocity/asv
 
 If you need to run a benchmark, change your directory to ``asv_bench/`` and run::
 
-    asv continuous -f 1.1 upstream/master HEAD
+    asv continuous -f 1.1 upstream/main HEAD
 
 You can replace ``HEAD`` with the name of the branch you are working on,
 and report benchmarks that changed by more than 10%.
 The command uses ``conda`` by default for creating the benchmark
 environments. If you want to use virtualenv instead, write::
 
-    asv continuous -f 1.1 -E virtualenv upstream/master HEAD
+    asv continuous -f 1.1 -E virtualenv upstream/main HEAD
 
 The ``-E virtualenv`` option should be added to all ``asv`` commands
 that run benchmarks. The default value is defined in ``asv.conf.json``.
@@ -781,12 +889,12 @@ do not cause unexpected performance regressions.  You can run specific benchmark
 using the ``-b`` flag, which takes a regular expression. For example, this will
 only run benchmarks from a ``pandas/asv_bench/benchmarks/groupby.py`` file::
 
-    asv continuous -f 1.1 upstream/master HEAD -b ^groupby
+    asv continuous -f 1.1 upstream/main HEAD -b ^groupby
 
 If you want to only run a specific group of benchmarks from a file, you can do it
 using ``.`` as a separator. For example::
 
-    asv continuous -f 1.1 upstream/master HEAD -b groupby.GroupByMethods
+    asv continuous -f 1.1 upstream/main HEAD -b groupby.GroupByMethods
 
 will only run the ``GroupByMethods`` benchmark defined in ``groupby.py``.
 
@@ -842,9 +950,9 @@ directive is used. The sphinx syntax for that is:
 
 .. code-block:: rst
 
-  .. versionadded:: 1.1.0
+    .. versionadded:: 2.1.0
 
-This will put the text *New in version 1.1.0* wherever you put the sphinx
+This will put the text *New in version 2.1.0* wherever you put the sphinx
 directive. This should also be put in the docstring when adding a new function
 or method (`example <https://github.com/pandas-dev/pandas/blob/v0.20.2/pandas/core/frame.py#L1495>`__)
 or a new keyword argument (`example <https://github.com/pandas-dev/pandas/blob/v0.20.2/pandas/core/generic.py#L568>`__).

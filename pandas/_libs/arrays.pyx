@@ -6,6 +6,7 @@ cimport cython
 import numpy as np
 
 cimport numpy as cnp
+from cpython cimport PyErr_Clear
 from numpy cimport ndarray
 
 cnp.import_array()
@@ -129,11 +130,22 @@ cdef class NDArrayBacked:
 
     @property
     def nbytes(self) -> int:
-        return self._ndarray.nbytes
+        return cnp.PyArray_NBYTES(self._ndarray)
 
-    def copy(self):
-        # NPY_ANYORDER -> same order as self._ndarray
-        res_values = cnp.PyArray_NewCopy(self._ndarray, cnp.NPY_ANYORDER)
+    def copy(self, order="C"):
+        cdef:
+            cnp.NPY_ORDER order_code
+            int success
+
+        success = cnp.PyArray_OrderConverter(order, &order_code)
+        if not success:
+            # clear exception so that we don't get a SystemError
+            PyErr_Clear()
+            # same message used by numpy
+            msg = f"order must be one of 'C', 'F', 'A', or 'K' (got '{order}')"
+            raise ValueError(msg)
+
+        res_values = cnp.PyArray_NewCopy(self._ndarray, order_code)
         return self._from_backing_data(res_values)
 
     def delete(self, loc, axis=0):
@@ -145,7 +157,7 @@ cdef class NDArrayBacked:
         return self._from_backing_data(res_values)
 
     # TODO: pass NPY_MAXDIMS equiv to axis=None?
-    def repeat(self, repeats, axis: int = 0):
+    def repeat(self, repeats, axis: int | np.integer = 0):
         if axis is None:
             axis = 0
         res_values = cnp.PyArray_Repeat(self._ndarray, repeats, <int>axis)
@@ -165,3 +177,14 @@ cdef class NDArrayBacked:
     def T(self):
         res_values = self._ndarray.T
         return self._from_backing_data(res_values)
+
+    def transpose(self, *axes):
+        res_values = self._ndarray.transpose(*axes)
+        return self._from_backing_data(res_values)
+
+    @classmethod
+    def _concat_same_type(cls, to_concat, axis=0):
+        # NB: We are assuming at this point that dtypes all match
+        new_values = [obj._ndarray for obj in to_concat]
+        new_arr = cnp.PyArray_Concatenate(new_values, axis)
+        return to_concat[0]._from_backing_data(new_arr)

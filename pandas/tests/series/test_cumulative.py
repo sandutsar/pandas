@@ -20,28 +20,23 @@ methods = {
 }
 
 
-def _check_accum_op(name, series, check_dtype=True):
-    func = getattr(np, name)
-    tm.assert_numpy_array_equal(
-        func(series).values, func(np.array(series)), check_dtype=check_dtype
-    )
-
-    # with missing values
-    ts = series.copy()
-    ts[::2] = np.NaN
-
-    result = func(ts)[1::2]
-    expected = func(np.array(ts.dropna()))
-
-    tm.assert_numpy_array_equal(result.values, expected, check_dtype=False)
-
-
 class TestSeriesCumulativeOps:
-    def test_cumsum(self, datetime_series):
-        _check_accum_op("cumsum", datetime_series)
+    @pytest.mark.parametrize("func", [np.cumsum, np.cumprod])
+    def test_datetime_series(self, datetime_series, func):
+        tm.assert_numpy_array_equal(
+            func(datetime_series).values,
+            func(np.array(datetime_series)),
+            check_dtype=True,
+        )
 
-    def test_cumprod(self, datetime_series):
-        _check_accum_op("cumprod", datetime_series)
+        # with missing values
+        ts = datetime_series.copy()
+        ts[::2] = np.nan
+
+        result = func(ts)[1::2]
+        expected = func(np.array(ts.dropna()))
+
+        tm.assert_numpy_array_equal(result.values, expected, check_dtype=False)
 
     @pytest.mark.parametrize("method", ["cummin", "cummax"])
     def test_cummin_cummax(self, datetime_series, method):
@@ -52,7 +47,7 @@ class TestSeriesCumulativeOps:
 
         tm.assert_numpy_array_equal(result, expected)
         ts = datetime_series.copy()
-        ts[::2] = np.NaN
+        ts[::2] = np.nan
         result = getattr(ts, method)()[1::2]
         expected = ufunc(ts.dropna())
 
@@ -67,64 +62,97 @@ class TestSeriesCumulativeOps:
             pd.Timestamp("1999-12-31").tz_localize("US/Pacific"),
         ],
     )
-    def test_cummin_cummax_datetimelike(self, ts):
+    @pytest.mark.parametrize(
+        "method, skipna, exp_tdi",
+        [
+            ["cummax", True, ["NaT", "2 days", "NaT", "2 days", "NaT", "3 days"]],
+            ["cummin", True, ["NaT", "2 days", "NaT", "1 days", "NaT", "1 days"]],
+            [
+                "cummax",
+                False,
+                ["NaT", "NaT", "NaT", "NaT", "NaT", "NaT"],
+            ],
+            [
+                "cummin",
+                False,
+                ["NaT", "NaT", "NaT", "NaT", "NaT", "NaT"],
+            ],
+        ],
+    )
+    def test_cummin_cummax_datetimelike(self, ts, method, skipna, exp_tdi):
         # with ts==pd.Timedelta(0), we are testing td64; with naive Timestamp
         #  we are testing datetime64[ns]; with Timestamp[US/Pacific]
         #  we are testing dt64tz
         tdi = pd.to_timedelta(["NaT", "2 days", "NaT", "1 days", "NaT", "3 days"])
         ser = pd.Series(tdi + ts)
 
-        exp_tdi = pd.to_timedelta(["NaT", "2 days", "NaT", "2 days", "NaT", "3 days"])
+        exp_tdi = pd.to_timedelta(exp_tdi)
         expected = pd.Series(exp_tdi + ts)
-        result = ser.cummax(skipna=True)
+        result = getattr(ser, method)(skipna=skipna)
         tm.assert_series_equal(expected, result)
 
-        exp_tdi = pd.to_timedelta(["NaT", "2 days", "NaT", "1 days", "NaT", "1 days"])
-        expected = pd.Series(exp_tdi + ts)
-        result = ser.cummin(skipna=True)
-        tm.assert_series_equal(expected, result)
-
-        exp_tdi = pd.to_timedelta(
-            ["NaT", "2 days", "2 days", "2 days", "2 days", "3 days"]
+    @pytest.mark.parametrize(
+        "func, exp",
+        [
+            ("cummin", "2012-1-1"),
+            ("cummax", "2012-1-2"),
+        ],
+    )
+    def test_cummin_cummax_period(self, func, exp):
+        # GH#28385
+        ser = pd.Series(
+            [pd.Period("2012-1-1", freq="D"), pd.NaT, pd.Period("2012-1-2", freq="D")]
         )
-        expected = pd.Series(exp_tdi + ts)
-        result = ser.cummax(skipna=False)
-        tm.assert_series_equal(expected, result)
+        result = getattr(ser, func)(skipna=False)
+        expected = pd.Series([pd.Period("2012-1-1", freq="D"), pd.NaT, pd.NaT])
+        tm.assert_series_equal(result, expected)
 
-        exp_tdi = pd.to_timedelta(
-            ["NaT", "2 days", "2 days", "1 days", "1 days", "1 days"]
-        )
-        expected = pd.Series(exp_tdi + ts)
-        result = ser.cummin(skipna=False)
-        tm.assert_series_equal(expected, result)
+        result = getattr(ser, func)(skipna=True)
+        exp = pd.Period(exp, freq="D")
+        expected = pd.Series([pd.Period("2012-1-1", freq="D"), pd.NaT, exp])
+        tm.assert_series_equal(result, expected)
 
-    def test_cummethods_bool(self):
+    @pytest.mark.parametrize(
+        "arg",
+        [
+            [False, False, False, True, True, False, False],
+            [False, False, False, False, False, False, False],
+        ],
+    )
+    @pytest.mark.parametrize(
+        "func", [lambda x: x, lambda x: ~x], ids=["identity", "inverse"]
+    )
+    @pytest.mark.parametrize("method", methods.keys())
+    def test_cummethods_bool(self, arg, func, method):
         # GH#6270
         # checking Series method vs the ufunc applied to the values
 
-        a = pd.Series([False, False, False, True, True, False, False])
-        c = pd.Series([False] * len(a))
+        ser = func(pd.Series(arg))
+        ufunc = methods[method]
 
-        for method in methods:
-            for ser in [a, ~a, c, ~c]:
-                ufunc = methods[method]
+        exp_vals = ufunc(ser.values)
+        expected = pd.Series(exp_vals)
 
-                exp_vals = ufunc(ser.values)
-                expected = pd.Series(exp_vals)
+        result = getattr(ser, method)()
 
-                result = getattr(ser, method)()
+        tm.assert_series_equal(result, expected)
 
-                tm.assert_series_equal(result, expected)
-
-    def test_cummethods_bool_in_object_dtype(self):
-
+    @pytest.mark.parametrize(
+        "method, expected",
+        [
+            ["cumsum", pd.Series([0, 1, np.nan, 1], dtype=object)],
+            ["cumprod", pd.Series([False, 0, np.nan, 0])],
+            ["cummin", pd.Series([False, False, np.nan, False])],
+            ["cummax", pd.Series([False, True, np.nan, True])],
+        ],
+    )
+    def test_cummethods_bool_in_object_dtype(self, method, expected):
         ser = pd.Series([False, True, np.nan, False])
-        cse = pd.Series([0, 1, np.nan, 1], dtype=object)
-        cpe = pd.Series([False, 0, np.nan, 0])
-        cmin = pd.Series([False, False, np.nan, False])
-        cmax = pd.Series([False, True, np.nan, True])
-        expecteds = {"cumsum": cse, "cumprod": cpe, "cummin": cmin, "cummax": cmax}
+        result = getattr(ser, method)()
+        tm.assert_series_equal(result, expected)
 
-        for method in methods:
-            res = getattr(ser, method)()
-            tm.assert_series_equal(res, expecteds[method])
+    def test_cumprod_timedelta(self):
+        # GH#48111
+        ser = pd.Series([pd.Timedelta(days=1), pd.Timedelta(days=3)])
+        with pytest.raises(TypeError, match="cumprod not supported for Timedelta"):
+            ser.cumprod()

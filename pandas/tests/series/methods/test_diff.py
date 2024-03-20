@@ -10,27 +10,37 @@ import pandas._testing as tm
 
 
 class TestSeriesDiff:
+    def test_diff_series_requires_integer(self):
+        series = Series(np.random.default_rng(2).standard_normal(2))
+        with pytest.raises(ValueError, match="periods must be an integer"):
+            series.diff(1.5)
+
     def test_diff_np(self):
-        pytest.skip("skipping due to Series no longer being an ndarray")
+        # TODO(__array_function__): could make np.diff return a Series
+        #  matching ser.diff()
 
-        # no longer works as the return type of np.diff is now nd.array
-        s = Series(np.arange(5))
+        ser = Series(np.arange(5))
 
-        r = np.diff(s)
-        tm.assert_series_equal(Series([np.nan, 0, 0, 0, np.nan]), r)
+        res = np.diff(ser)
+        expected = np.array([1, 1, 1, 1])
+        tm.assert_numpy_array_equal(res, expected)
 
     def test_diff_int(self):
         # int dtype
         a = 10000000000000000
         b = a + 1
-        s = Series([a, b])
+        ser = Series([a, b])
 
-        result = s.diff()
+        result = ser.diff()
         assert result[1] == 1
 
     def test_diff_tz(self):
         # Combined datetime diff, normal diff and boolean diff test
-        ts = tm.makeTimeSeries(name="ts")
+        ts = Series(
+            np.arange(10, dtype=np.float64),
+            index=date_range("2020-01-01", periods=10),
+            name="ts",
+        )
         ts.diff()
 
         # neg n
@@ -43,10 +53,11 @@ class TestSeriesDiff:
         expected = ts - ts
         tm.assert_series_equal(result, expected)
 
+    def test_diff_dt64(self):
         # datetime diff (GH#3100)
-        s = Series(date_range("20130102", periods=5))
-        result = s.diff()
-        expected = s - s.shift(1)
+        ser = Series(date_range("20130102", periods=5))
+        result = ser.diff()
+        expected = ser - ser.shift(1)
         tm.assert_series_equal(result, expected)
 
         # timedelta diff
@@ -54,28 +65,27 @@ class TestSeriesDiff:
         expected = expected.diff()  # previously expected
         tm.assert_series_equal(result, expected)
 
+    def test_diff_dt64tz(self):
         # with tz
-        s = Series(
+        ser = Series(
             date_range("2000-01-01 09:00:00", periods=5, tz="US/Eastern"), name="foo"
         )
-        result = s.diff()
+        result = ser.diff()
         expected = Series(TimedeltaIndex(["NaT"] + ["1 days"] * 4), name="foo")
         tm.assert_series_equal(result, expected)
 
-    @pytest.mark.parametrize(
-        "input,output,diff",
-        [([False, True, True, False, False], [np.nan, True, False, True, False], 1)],
-    )
-    def test_diff_bool(self, input, output, diff):
+    def test_diff_bool(self):
         # boolean series (test for fixing #17294)
-        s = Series(input)
-        result = s.diff()
+        data = [False, True, True, False, False]
+        output = [np.nan, True, False, True, False]
+        ser = Series(data)
+        result = ser.diff()
         expected = Series(output)
         tm.assert_series_equal(result, expected)
 
     def test_diff_object_dtype(self):
         # object series
-        s = Series([False, True, 5.0, np.nan, True, False])
-        result = s.diff()
-        expected = s - s.shift(1)
+        ser = Series([False, True, 5.0, np.nan, True, False])
+        result = ser.diff()
+        expected = ser - ser.shift(1)
         tm.assert_series_equal(result, expected)

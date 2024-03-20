@@ -6,8 +6,6 @@ import numpy as np
 
 import pandas as pd
 
-from .pandas_vb_common import tm
-
 try:
     from pandas.api.types import union_categoricals
 except ImportError:
@@ -19,7 +17,7 @@ except ImportError:
 
 class Constructor:
     def setup(self):
-        N = 10 ** 5
+        N = 10**5
         self.categories = list("abcde")
         self.cat_idx = pd.Index(self.categories)
         self.values = np.tile(self.categories, N)
@@ -42,7 +40,8 @@ class Constructor:
         pd.Categorical(self.values, self.categories)
 
     def time_fastpath(self):
-        pd.Categorical(self.codes, self.cat_idx, fastpath=True)
+        dtype = pd.CategoricalDtype(categories=self.cat_idx)
+        pd.Categorical._simple_new(self.codes, dtype)
 
     def time_datetimes(self):
         pd.Categorical(self.datetimes)
@@ -71,16 +70,16 @@ class Constructor:
 
 class AsType:
     def setup(self):
-        N = 10 ** 5
+        N = 10**5
 
         random_pick = np.random.default_rng().choice
 
         categories = {
             "str": list(string.ascii_letters),
-            "int": np.random.randint(2 ** 16, size=154),
+            "int": np.random.randint(2**16, size=154),
             "float": sys.maxsize * np.random.random((38,)),
             "timestamp": [
-                pd.Timestamp(x, unit="s") for x in np.random.randint(2 ** 18, size=578)
+                pd.Timestamp(x, unit="s") for x in np.random.randint(2**18, size=578)
             ],
         }
 
@@ -112,7 +111,7 @@ class AsType:
 
 class Concat:
     def setup(self):
-        N = 10 ** 5
+        N = 10**5
         self.s = pd.Series(list("aabbcd") * N).astype("category")
 
         self.a = pd.Categorical(list("aabbcd") * N)
@@ -143,12 +142,11 @@ class Concat:
 
 
 class ValueCounts:
-
     params = [True, False]
     param_names = ["dropna"]
 
     def setup(self, dropna):
-        n = 5 * 10 ** 5
+        n = 5 * 10**5
         arr = [f"s{i:04d}" for i in np.random.randint(0, n // 10, size=n)]
         self.ts = pd.Series(arr).astype("category")
 
@@ -166,7 +164,7 @@ class Repr:
 
 class SetCategories:
     def setup(self):
-        n = 5 * 10 ** 5
+        n = 5 * 10**5
         arr = [f"s{i:04d}" for i in np.random.randint(0, n // 10, size=n)]
         self.ts = pd.Series(arr).astype("category")
 
@@ -176,7 +174,7 @@ class SetCategories:
 
 class RemoveCategories:
     def setup(self):
-        n = 5 * 10 ** 5
+        n = 5 * 10**5
         arr = [f"s{i:04d}" for i in np.random.randint(0, n // 10, size=n)]
         self.ts = pd.Series(arr).astype("category")
 
@@ -186,10 +184,10 @@ class RemoveCategories:
 
 class Rank:
     def setup(self):
-        N = 10 ** 5
-        ncats = 100
+        N = 10**5
+        ncats = 15
 
-        self.s_str = pd.Series(tm.makeCategoricalIndex(N, ncats)).astype(str)
+        self.s_str = pd.Series(np.random.randint(0, ncats, size=N).astype(str))
         self.s_str_cat = pd.Series(self.s_str, dtype="category")
         with warnings.catch_warnings(record=True):
             str_cat_type = pd.CategoricalDtype(set(self.s_str), ordered=True)
@@ -241,8 +239,8 @@ class IsMonotonic:
 
 class Contains:
     def setup(self):
-        N = 10 ** 5
-        self.ci = tm.makeCategoricalIndex(N)
+        N = 10**5
+        self.ci = pd.CategoricalIndex(np.arange(N))
         self.c = self.ci.values
         self.key = self.ci.categories[0]
 
@@ -254,25 +252,22 @@ class Contains:
 
 
 class CategoricalSlicing:
-
     params = ["monotonic_incr", "monotonic_decr", "non_monotonic"]
     param_names = ["index"]
 
     def setup(self, index):
-        N = 10 ** 6
+        N = 10**6
         categories = ["a", "b", "c"]
-        values = [0] * N + [1] * N + [2] * N
         if index == "monotonic_incr":
-            self.data = pd.Categorical.from_codes(values, categories=categories)
+            codes = np.repeat([0, 1, 2], N)
         elif index == "monotonic_decr":
-            self.data = pd.Categorical.from_codes(
-                list(reversed(values)), categories=categories
-            )
+            codes = np.repeat([2, 1, 0], N)
         elif index == "non_monotonic":
-            self.data = pd.Categorical.from_codes([0, 1, 2] * N, categories=categories)
+            codes = np.tile([0, 1, 2], N)
         else:
             raise ValueError(f"Invalid index param: {index}")
 
+        self.data = pd.Categorical.from_codes(codes, categories=categories)
         self.scalar = 10000
         self.list = list(range(10000))
         self.cat_scalar = "b"
@@ -295,7 +290,7 @@ class CategoricalSlicing:
 
 class Indexing:
     def setup(self):
-        N = 10 ** 5
+        N = 10**5
         self.index = pd.CategoricalIndex(range(N), range(N))
         self.series = pd.Series(range(N), index=self.index).sort_index()
         self.category = self.index[500]
@@ -327,8 +322,8 @@ class Indexing:
 
 class SearchSorted:
     def setup(self):
-        N = 10 ** 5
-        self.ci = tm.makeCategoricalIndex(N).sort_values()
+        N = 10**5
+        self.ci = pd.CategoricalIndex(np.arange(N)).sort_values()
         self.c = self.ci.values
         self.key = self.ci.categories[1]
 

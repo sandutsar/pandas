@@ -1,7 +1,10 @@
 """
 Ops for masked arrays.
 """
+
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -10,13 +13,16 @@ from pandas._libs import (
     missing as libmissing,
 )
 
+if TYPE_CHECKING:
+    from pandas._typing import npt
+
 
 def kleene_or(
-    left: bool | np.ndarray,
-    right: bool | np.ndarray,
+    left: bool | np.ndarray | libmissing.NAType,
+    right: bool | np.ndarray | libmissing.NAType,
     left_mask: np.ndarray | None,
     right_mask: np.ndarray | None,
-):
+) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
     """
     Boolean ``or`` using Kleene logic.
 
@@ -37,12 +43,13 @@ def kleene_or(
         The result of the logical or, and the new mask.
     """
     # To reduce the number of cases, we ensure that `left` & `left_mask`
-    # always come from an array, not a scalar. This is safe, since because
+    # always come from an array, not a scalar. This is safe, since
     # A | B == B | A
     if left_mask is None:
         return kleene_or(right, left, right_mask, left_mask)
 
-    assert isinstance(left, np.ndarray)
+    if not isinstance(left, np.ndarray):
+        raise TypeError("Either `left` or `right` need to be a np.ndarray.")
 
     raise_for_nan(right, method="or")
 
@@ -73,11 +80,11 @@ def kleene_or(
 
 
 def kleene_xor(
-    left: bool | np.ndarray,
-    right: bool | np.ndarray,
+    left: bool | np.ndarray | libmissing.NAType,
+    right: bool | np.ndarray | libmissing.NAType,
     left_mask: np.ndarray | None,
     right_mask: np.ndarray | None,
-):
+) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
     """
     Boolean ``xor`` using Kleene logic.
 
@@ -99,16 +106,20 @@ def kleene_xor(
     result, mask: ndarray[bool]
         The result of the logical xor, and the new mask.
     """
+    # To reduce the number of cases, we ensure that `left` & `left_mask`
+    # always come from an array, not a scalar. This is safe, since
+    # A ^ B == B ^ A
     if left_mask is None:
         return kleene_xor(right, left, right_mask, left_mask)
+
+    if not isinstance(left, np.ndarray):
+        raise TypeError("Either `left` or `right` need to be a np.ndarray.")
 
     raise_for_nan(right, method="xor")
     if right is libmissing.NA:
         result = np.zeros_like(left)
     else:
-        # error: Incompatible types in assignment (expression has type
-        # "Union[bool, Any]", variable has type "ndarray")
-        result = left ^ right  # type: ignore[assignment]
+        result = left ^ right
 
     if right_mask is None:
         if right is libmissing.NA:
@@ -126,7 +137,7 @@ def kleene_and(
     right: bool | libmissing.NAType | np.ndarray,
     left_mask: np.ndarray | None,
     right_mask: np.ndarray | None,
-):
+) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
     """
     Boolean ``and`` using Kleene logic.
 
@@ -146,12 +157,13 @@ def kleene_and(
         The result of the logical xor, and the new mask.
     """
     # To reduce the number of cases, we ensure that `left` & `left_mask`
-    # always come from an array, not a scalar. This is safe, since because
-    # A | B == B | A
+    # always come from an array, not a scalar. This is safe, since
+    # A & B == B & A
     if left_mask is None:
         return kleene_and(right, left, right_mask, left_mask)
 
-    assert isinstance(left, np.ndarray)
+    if not isinstance(left, np.ndarray):
+        raise TypeError("Either `left` or `right` need to be a np.ndarray.")
     raise_for_nan(right, method="and")
 
     if right is libmissing.NA:
@@ -178,6 +190,6 @@ def kleene_and(
     return result, mask
 
 
-def raise_for_nan(value, method: str):
+def raise_for_nan(value: object, method: str) -> None:
     if lib.is_float(value) and np.isnan(value):
         raise ValueError(f"Cannot perform logical '{method}' with floating NaN")

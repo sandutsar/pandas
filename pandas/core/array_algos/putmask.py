@@ -1,32 +1,30 @@
 """
-EA-compatible analogue to to np.putmask
+EA-compatible analogue to np.putmask
 """
+
 from __future__ import annotations
 
-from typing import Any
-import warnings
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
 
 import numpy as np
 
 from pandas._libs import lib
-from pandas._typing import (
-    ArrayLike,
-    npt,
-)
 
-from pandas.core.dtypes.cast import (
-    convert_scalar_for_putitemlike,
-    find_common_type,
-    infer_dtype_from,
-)
-from pandas.core.dtypes.common import (
-    is_float_dtype,
-    is_integer_dtype,
-    is_list_like,
-)
-from pandas.core.dtypes.missing import isna_compat
+from pandas.core.dtypes.cast import infer_dtype_from
+from pandas.core.dtypes.common import is_list_like
 
 from pandas.core.arrays import ExtensionArray
+
+if TYPE_CHECKING:
+    from pandas._typing import (
+        ArrayLike,
+        npt,
+    )
+
+    from pandas import MultiIndex
 
 
 def putmask_inplace(values: ArrayLike, mask: npt.NDArray[np.bool_], value: Any) -> None:
@@ -41,9 +39,6 @@ def putmask_inplace(values: ArrayLike, mask: npt.NDArray[np.bool_], value: Any) 
         We assume extract_bool_array has already been called.
     value : Any
     """
-
-    if lib.is_scalar(value) and isinstance(values, np.ndarray):
-        value = convert_scalar_for_putitemlike(value, values.dtype)
 
     if (
         not isinstance(values, np.ndarray)
@@ -65,81 +60,6 @@ def putmask_inplace(values: ArrayLike, mask: npt.NDArray[np.bool_], value: Any) 
         np.putmask(values, mask, value)
 
 
-def putmask_smart(values: np.ndarray, mask: npt.NDArray[np.bool_], new) -> np.ndarray:
-    """
-    Return a new ndarray, try to preserve dtype if possible.
-
-    Parameters
-    ----------
-    values : np.ndarray
-        `values`, updated in-place.
-    mask : np.ndarray[bool]
-        Applies to both sides (array like).
-    new : `new values` either scalar or an array like aligned with `values`
-
-    Returns
-    -------
-    values : ndarray with updated values
-        this *may* be a copy of the original
-
-    See Also
-    --------
-    np.putmask
-    """
-    # we cannot use np.asarray() here as we cannot have conversions
-    # that numpy does when numeric are mixed with strings
-
-    if not is_list_like(new):
-        new = np.broadcast_to(new, mask.shape)
-
-    # see if we are only masking values that if putted
-    # will work in the current dtype
-    try:
-        nn = new[mask]
-    except TypeError:
-        # TypeError: only integer scalar arrays can be converted to a scalar index
-        pass
-    else:
-        # make sure that we have a nullable type if we have nulls
-        if not isna_compat(values, nn[0]):
-            pass
-        elif not (is_float_dtype(nn.dtype) or is_integer_dtype(nn.dtype)):
-            # only compare integers/floats
-            pass
-        elif not (is_float_dtype(values.dtype) or is_integer_dtype(values.dtype)):
-            # only compare integers/floats
-            pass
-        else:
-
-            # we ignore ComplexWarning here
-            with warnings.catch_warnings(record=True):
-                warnings.simplefilter("ignore", np.ComplexWarning)
-                nn_at = nn.astype(values.dtype)
-
-            comp = nn == nn_at
-            if is_list_like(comp) and comp.all():
-                nv = values.copy()
-                nv[mask] = nn_at
-                return nv
-
-    new = np.asarray(new)
-
-    if values.dtype.kind == new.dtype.kind:
-        # preserves dtype if possible
-        np.putmask(values, mask, new)
-        return values
-
-    dtype = find_common_type([values.dtype, new.dtype])
-    # error: Argument 1 to "astype" of "_ArrayOrScalarCommon" has incompatible type
-    # "Union[dtype[Any], ExtensionDtype]"; expected "Union[dtype[Any], None, type,
-    # _SupportsDType, str, Union[Tuple[Any, int], Tuple[Any, Union[int, Sequence[int]]],
-    # List[Any], _DTypeDict, Tuple[Any, Any]]]"
-    values = values.astype(dtype)  # type: ignore[arg-type]
-
-    np.putmask(values, mask, new)
-    return values
-
-
 def putmask_without_repeat(
     values: np.ndarray, mask: npt.NDArray[np.bool_], new: Any
 ) -> None:
@@ -159,7 +79,10 @@ def putmask_without_repeat(
     # TODO: this prob needs some better checking for 2D cases
     nlocs = mask.sum()
     if nlocs > 0 and is_list_like(new) and getattr(new, "ndim", 1) == 1:
-        if nlocs == len(new):
+        shape = np.shape(new)
+        # np.shape compat for if setitem_datetimelike_compat
+        #  changed arraylike to list e.g. test_where_dt64_2d
+        if nlocs == shape[-1]:
             # GH#30567
             # If length of ``new`` is less than the length of ``values``,
             # `np.putmask` would first repeat the ``new`` array and then
@@ -168,7 +91,7 @@ def putmask_without_repeat(
             # to place in the masked locations of ``values``
             np.place(values, mask, new)
             # i.e. values[mask] = new
-        elif mask.shape[-1] == len(new) or len(new) == 1:
+        elif mask.shape[-1] == shape[-1] or shape[-1] == 1:
             np.putmask(values, mask, new)
         else:
             raise ValueError("cannot assign mismatch length to masked array")
@@ -177,7 +100,7 @@ def putmask_without_repeat(
 
 
 def validate_putmask(
-    values: ArrayLike, mask: np.ndarray
+    values: ArrayLike | MultiIndex, mask: np.ndarray
 ) -> tuple[npt.NDArray[np.bool_], bool]:
     """
     Validate mask and check if this putmask operation is a no-op.
@@ -214,9 +137,9 @@ def setitem_datetimelike_compat(values: np.ndarray, num_set: int, other):
     other : Any
     """
     if values.dtype == object:
-        dtype, _ = infer_dtype_from(other, pandas_dtype=True)
+        dtype, _ = infer_dtype_from(other)
 
-        if isinstance(dtype, np.dtype) and dtype.kind in ["m", "M"]:
+        if lib.is_np_dtype(dtype, "mM"):
             # https://github.com/numpy/numpy/issues/12550
             #  timedelta64 will incorrectly cast to int
             if not is_list_like(other):

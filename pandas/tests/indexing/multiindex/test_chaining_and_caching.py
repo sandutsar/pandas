@@ -1,7 +1,6 @@
 import numpy as np
-import pytest
 
-import pandas.util._test_decorators as td
+from pandas._libs import index as libindex
 
 from pandas import (
     DataFrame,
@@ -9,7 +8,6 @@ from pandas import (
     Series,
 )
 import pandas._testing as tm
-import pandas.core.common as com
 
 
 def test_detect_chained_assignment():
@@ -29,26 +27,27 @@ def test_detect_chained_assignment():
     multiind = MultiIndex.from_tuples(tuples, names=["part", "side"])
     zed = DataFrame(events, index=["a", "b"], columns=multiind)
 
-    msg = "A value is trying to be set on a copy of a slice from a DataFrame"
-    with pytest.raises(com.SettingWithCopyError, match=msg):
+    with tm.raises_chained_assignment_error():
         zed["eyes"]["right"].fillna(value=555, inplace=True)
 
 
-@td.skip_array_manager_invalid_test  # with ArrayManager df.loc[0] is not a view
 def test_cache_updating():
     # 5216
     # make sure that we don't try to set a dead cache
-    a = np.random.rand(10, 3)
+    a = np.random.default_rng(2).random((10, 3))
     df = DataFrame(a, columns=["x", "y", "z"])
+    df_original = df.copy()
     tuples = [(i, j) for i in range(5) for j in range(2)]
     index = MultiIndex.from_tuples(tuples)
     df.index = index
 
     # setting via chained assignment
     # but actually works, since everything is a view
-    df.loc[0]["z"].iloc[0] = 1.0
-    result = df.loc[(0, 0), "z"]
-    assert result == 1
+
+    with tm.raises_chained_assignment_error():
+        df.loc[0]["z"].iloc[0] = 1.0
+
+    assert df.loc[(0, 0), "z"] == df_original.loc[0, "z"]
 
     # correct setting
     df.loc[(0, 0), "z"] = 2
@@ -56,18 +55,16 @@ def test_cache_updating():
     assert result == 2
 
 
-@pytest.mark.slow
-def test_indexer_caching():
+def test_indexer_caching(monkeypatch):
     # GH5727
     # make sure that indexers are in the _internal_names_set
-    n = 1000001
-    arrays = (range(n), range(n))
-    index = MultiIndex.from_tuples(zip(*arrays))
-    s = Series(np.zeros(n), index=index)
-    str(s)
+    size_cutoff = 20
+    with monkeypatch.context():
+        monkeypatch.setattr(libindex, "_SIZE_CUTOFF", size_cutoff)
+        index = MultiIndex.from_arrays([np.arange(size_cutoff), np.arange(size_cutoff)])
+        s = Series(np.zeros(size_cutoff), index=index)
 
-    # setitem
-    expected = Series(np.ones(n), index=index)
-    s = Series(np.zeros(n), index=index)
-    s[s == 0] = 1
+        # setitem
+        s[s == 0] = 1
+    expected = Series(np.ones(size_cutoff), index=index)
     tm.assert_series_equal(s, expected)

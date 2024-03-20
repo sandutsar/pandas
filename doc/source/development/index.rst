@@ -16,13 +16,11 @@ Development
     contributing_environment
     contributing_documentation
     contributing_codebase
-    code_style
     maintaining
     internals
-    test_writing
+    copy_on_write
     debugging_extensions
     extending
     developer
     policies
-    roadmap
-    meeting
+    community

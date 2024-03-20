@@ -1,6 +1,7 @@
 """
 Core eval alignment algorithms.
 """
+
 from __future__ import annotations
 
 from functools import (
@@ -9,13 +10,16 @@ from functools import (
 )
 from typing import (
     TYPE_CHECKING,
-    Sequence,
+    Callable,
 )
 import warnings
 
 import numpy as np
 
+from pandas._config.config import get_option
+
 from pandas.errors import PerformanceWarning
+from pandas.util._exceptions import find_stack_level
 
 from pandas.core.dtypes.generic import (
     ABCDataFrame,
@@ -27,6 +31,10 @@ import pandas.core.common as com
 from pandas.core.computation.common import result_type_many
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from pandas._typing import F
+
     from pandas.core.generic import NDFrame
     from pandas.core.indexes.api import Index
 
@@ -34,7 +42,6 @@ if TYPE_CHECKING:
 def _align_core_single_unary_op(
     term,
 ) -> tuple[partial | type[NDFrame], dict[str, Index] | None]:
-
     typ: partial | type[NDFrame]
     axes: dict[str, Index] | None = None
 
@@ -61,7 +68,7 @@ def _any_pandas_objects(terms) -> bool:
     return any(isinstance(term.value, PandasObject) for term in terms)
 
 
-def _filter_special_cases(f):
+def _filter_special_cases(f) -> Callable[[F], F]:
     @wraps(f)
     def wrapper(terms):
         # single unary operand
@@ -106,7 +113,7 @@ def _align_core(terms):
                 ax, itm = axis, items
 
             if not axes[ax].is_(itm):
-                axes[ax] = axes[ax].join(itm, how="outer")
+                axes[ax] = axes[ax].union(itm)
 
     for i, ndim in ndims.items():
         for axis, items in zip(range(ndim), axes):
@@ -120,17 +127,22 @@ def _align_core(terms):
                 reindexer_size = len(reindexer)
 
                 ordm = np.log10(max(1, abs(reindexer_size - term_axis_size)))
-                if ordm >= 1 and reindexer_size >= 10000:
+                if (
+                    get_option("performance_warnings")
+                    and ordm >= 1
+                    and reindexer_size >= 10000
+                ):
                     w = (
                         f"Alignment difference on axis {axis} is larger "
-                        f"than an order of magnitude on term {repr(terms[i].name)}, "
+                        f"than an order of magnitude on term {terms[i].name!r}, "
                         f"by more than {ordm:.4g}; performance may suffer."
                     )
-                    warnings.warn(w, category=PerformanceWarning, stacklevel=6)
+                    warnings.warn(
+                        w, category=PerformanceWarning, stacklevel=find_stack_level()
+                    )
 
-                f = partial(ti.reindex, reindexer, axis=axis, copy=False)
-
-                terms[i].update(f())
+                obj = ti.reindex(reindexer, axis=axis)
+                terms[i].update(obj)
 
         terms[i].update(terms[i].value.values)
 

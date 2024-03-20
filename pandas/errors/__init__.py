@@ -1,8 +1,10 @@
-# flake8: noqa
-
 """
 Expose public exceptions & warnings
 """
+
+from __future__ import annotations
+
+import ctypes
 
 from pandas._config.config import OptionError
 
@@ -11,44 +13,108 @@ from pandas._libs.tslibs import (
     OutOfBoundsTimedelta,
 )
 
+from pandas.util.version import InvalidVersion
+
 
 class IntCastingNaNError(ValueError):
     """
-    Raised when attempting an astype operation on an array with NaN to an integer
-    dtype.
-    """
+    Exception raised when converting (``astype``) an array with NaN to an integer type.
 
-    pass
+    Examples
+    --------
+    >>> pd.DataFrame(np.array([[1, np.nan], [2, 3]]), dtype="i8")
+    Traceback (most recent call last):
+    IntCastingNaNError: Cannot convert non-finite values (NA or inf) to integer
+    """
 
 
 class NullFrequencyError(ValueError):
     """
-    Error raised when a null `freq` attribute is used in an operation
-    that needs a non-null frequency, particularly `DatetimeIndex.shift`,
-    `TimedeltaIndex.shift`, `PeriodIndex.shift`.
-    """
+    Exception raised when a ``freq`` cannot be null.
 
-    pass
+    Particularly ``DatetimeIndex.shift``, ``TimedeltaIndex.shift``,
+    ``PeriodIndex.shift``.
+
+    Examples
+    --------
+    >>> df = pd.DatetimeIndex(["2011-01-01 10:00", "2011-01-01"], freq=None)
+    >>> df.shift(2)
+    Traceback (most recent call last):
+    NullFrequencyError: Cannot shift with no freq
+    """
 
 
 class PerformanceWarning(Warning):
     """
     Warning raised when there is a possible performance impact.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame(
+    ...     {"jim": [0, 0, 1, 1], "joe": ["x", "x", "z", "y"], "jolie": [1, 2, 3, 4]}
+    ... )
+    >>> df = df.set_index(["jim", "joe"])
+    >>> df
+              jolie
+    jim  joe
+    0    x    1
+         x    2
+    1    z    3
+         y    4
+    >>> df.loc[(1, "z")]  # doctest: +SKIP
+    # PerformanceWarning: indexing past lexsort depth may impact performance.
+    df.loc[(1, 'z')]
+              jolie
+    jim  joe
+    1    z        3
     """
 
 
 class UnsupportedFunctionCall(ValueError):
     """
-    Exception raised when attempting to call a numpy function
-    on a pandas object, but that function is not supported by
-    the object e.g. ``np.cumsum(groupby_object)``.
+    Exception raised when attempting to call a unsupported numpy function.
+
+    For example, ``np.cumsum(groupby_object)``.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame(
+    ...     {"A": [0, 0, 1, 1], "B": ["x", "x", "z", "y"], "C": [1, 2, 3, 4]}
+    ... )
+    >>> np.cumsum(df.groupby(["A"]))
+    Traceback (most recent call last):
+    UnsupportedFunctionCall: numpy operations are not valid with groupby.
+    Use .groupby(...).cumsum() instead
     """
 
 
 class UnsortedIndexError(KeyError):
     """
-    Error raised when attempting to get a slice of a MultiIndex,
-    and the index has not been lexsorted. Subclass of `KeyError`.
+    Error raised when slicing a MultiIndex which has not been lexsorted.
+
+    Subclass of `KeyError`.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame(
+    ...     {
+    ...         "cat": [0, 0, 1, 1],
+    ...         "color": ["white", "white", "brown", "black"],
+    ...         "lives": [4, 4, 3, 7],
+    ...     },
+    ... )
+    >>> df = df.set_index(["cat", "color"])
+    >>> df
+                lives
+    cat  color
+    0    white    4
+         white    4
+    1    brown    3
+         black    7
+    >>> df.loc[(0, "black") : (1, "white")]
+    Traceback (most recent call last):
+    UnsortedIndexError: 'Key length (2) was greater
+    than MultiIndex lexsort depth (1)'
     """
 
 
@@ -63,6 +129,17 @@ class ParserError(ValueError):
     --------
     read_csv : Read CSV (comma-separated) file into a DataFrame.
     read_html : Read HTML table into a DataFrame.
+
+    Examples
+    --------
+    >>> data = '''a,b,c
+    ... cat,foo,bar
+    ... dog,foo,"baz'''
+    >>> from io import StringIO
+    >>> pd.read_csv(StringIO(data), skipfooter=1, engine="python")
+    Traceback (most recent call last):
+    ParserError: ',' expected after '"'. Error could possibly be due
+    to parsing errors in the skipped footer rows
     """
 
 
@@ -93,41 +170,48 @@ class DtypeWarning(Warning):
     This example creates and reads a large CSV file with a column that contains
     `int` and `str`.
 
-    >>> df = pd.DataFrame({'a': (['1'] * 100000 + ['X'] * 100000 +
-    ...                          ['1'] * 100000),
-    ...                    'b': ['b'] * 300000})
-    >>> df.to_csv('test.csv', index=False)
-    >>> df2 = pd.read_csv('test.csv')
+    >>> df = pd.DataFrame(
+    ...     {
+    ...         "a": (["1"] * 100000 + ["X"] * 100000 + ["1"] * 100000),
+    ...         "b": ["b"] * 300000,
+    ...     }
+    ... )  # doctest: +SKIP
+    >>> df.to_csv("test.csv", index=False)  # doctest: +SKIP
+    >>> df2 = pd.read_csv("test.csv")  # doctest: +SKIP
     ... # DtypeWarning: Columns (0) have mixed types
 
     Important to notice that ``df2`` will contain both `str` and `int` for the
     same input, '1'.
 
-    >>> df2.iloc[262140, 0]
+    >>> df2.iloc[262140, 0]  # doctest: +SKIP
     '1'
-    >>> type(df2.iloc[262140, 0])
+    >>> type(df2.iloc[262140, 0])  # doctest: +SKIP
     <class 'str'>
-    >>> df2.iloc[262150, 0]
+    >>> df2.iloc[262150, 0]  # doctest: +SKIP
     1
-    >>> type(df2.iloc[262150, 0])
+    >>> type(df2.iloc[262150, 0])  # doctest: +SKIP
     <class 'int'>
 
     One way to solve this issue is using the `dtype` parameter in the
     `read_csv` and `read_table` functions to explicit the conversion:
 
-    >>> df2 = pd.read_csv('test.csv', sep=',', dtype={'a': str})
+    >>> df2 = pd.read_csv("test.csv", sep=",", dtype={"a": str})  # doctest: +SKIP
 
     No warning was issued.
-
-    >>> import os
-    >>> os.remove('test.csv')
     """
 
 
 class EmptyDataError(ValueError):
     """
-    Exception that is thrown in `pd.read_csv` (by both the C and
-    Python engines) when empty data or header is encountered.
+    Exception raised in ``pd.read_csv`` when empty data or header is encountered.
+
+    Examples
+    --------
+    >>> from io import StringIO
+    >>> empty = StringIO()
+    >>> pd.read_csv(empty)
+    Traceback (most recent call last):
+    EmptyDataError: No columns to parse from file
     """
 
 
@@ -163,35 +247,64 @@ class ParserWarning(Warning):
     >>> csv = '''a;b;c
     ...           1;1,8
     ...           1;2,1'''
-    >>> df = pd.read_csv(io.StringIO(csv), sep='[;,]')  # doctest: +SKIP
+    >>> df = pd.read_csv(io.StringIO(csv), sep="[;,]")  # doctest: +SKIP
     ... # ParserWarning: Falling back to the 'python' engine...
 
     Adding `engine='python'` to `pd.read_csv` removes the Warning:
 
-    >>> df = pd.read_csv(io.StringIO(csv), sep='[;,]', engine='python')
+    >>> df = pd.read_csv(io.StringIO(csv), sep="[;,]", engine="python")
     """
 
 
 class MergeError(ValueError):
     """
-    Error raised when problems arise during merging due to problems
-    with input data. Subclass of `ValueError`.
-    """
+    Exception raised when merging data.
 
+    Subclass of ``ValueError``.
 
-class AccessorRegistrationWarning(Warning):
-    """
-    Warning for attribute conflicts in accessor registration.
+    Examples
+    --------
+    >>> left = pd.DataFrame(
+    ...     {"a": ["a", "b", "b", "d"], "b": ["cat", "dog", "weasel", "horse"]},
+    ...     index=range(4),
+    ... )
+    >>> right = pd.DataFrame(
+    ...     {"a": ["a", "b", "c", "d"], "c": ["meow", "bark", "chirp", "nay"]},
+    ...     index=range(4),
+    ... ).set_index("a")
+    >>> left.join(
+    ...     right,
+    ...     on="a",
+    ...     validate="one_to_one",
+    ... )
+    Traceback (most recent call last):
+    MergeError: Merge keys are not unique in left dataset; not a one-to-one merge
     """
 
 
 class AbstractMethodError(NotImplementedError):
     """
-    Raise this error instead of NotImplementedError for abstract methods
-    while keeping compatibility with Python 2 and Python 3.
+    Raise this error instead of NotImplementedError for abstract methods.
+
+    Examples
+    --------
+    >>> class Foo:
+    ...     @classmethod
+    ...     def classmethod(cls):
+    ...         raise pd.errors.AbstractMethodError(cls, methodtype="classmethod")
+    ...
+    ...     def method(self):
+    ...         raise pd.errors.AbstractMethodError(self)
+    >>> test = Foo.classmethod()
+    Traceback (most recent call last):
+    AbstractMethodError: This classmethod must be defined in the concrete class Foo
+
+    >>> test2 = Foo().method()
+    Traceback (most recent call last):
+    AbstractMethodError: This classmethod must be defined in the concrete class Foo
     """
 
-    def __init__(self, class_instance, methodtype="method"):
+    def __init__(self, class_instance, methodtype: str = "method") -> None:
         types = {"method", "classmethod", "staticmethod", "property"}
         if methodtype not in types:
             raise ValueError(
@@ -211,6 +324,18 @@ class AbstractMethodError(NotImplementedError):
 class NumbaUtilError(Exception):
     """
     Error raised for unsupported Numba engine routines.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame(
+    ...     {"key": ["a", "a", "b", "b"], "data": [1, 2, 3, 4]}, columns=["key", "data"]
+    ... )
+    >>> def incorrect_function(x):
+    ...     return sum(x) * 2.7
+    >>> df.groupby("key").agg(incorrect_function, engine="numba")
+    Traceback (most recent call last):
+    NumbaUtilError: The first 2 arguments to incorrect_function
+    must be ['values', 'index']
     """
 
 
@@ -218,14 +343,12 @@ class DuplicateLabelError(ValueError):
     """
     Error raised when an operation would introduce duplicate labels.
 
-    .. versionadded:: 1.2.0
-
     Examples
     --------
-    >>> s = pd.Series([0, 1, 2], index=['a', 'b', 'c']).set_flags(
+    >>> s = pd.Series([0, 1, 2], index=["a", "b", "c"]).set_flags(
     ...     allows_duplicate_labels=False
     ... )
-    >>> s.reindex(['a', 'a', 'b'])
+    >>> s.reindex(["a", "a", "b"])
     Traceback (most recent call last):
        ...
     DuplicateLabelError: Index has duplicates.
@@ -239,5 +362,395 @@ class InvalidIndexError(Exception):
     """
     Exception raised when attempting to use an invalid index key.
 
-    .. versionadded:: 1.1.0
+    Examples
+    --------
+    >>> idx = pd.MultiIndex.from_product([["x", "y"], [0, 1]])
+    >>> df = pd.DataFrame([[1, 1, 2, 2], [3, 3, 4, 4]], columns=idx)
+    >>> df
+        x       y
+        0   1   0   1
+    0   1   1   2   2
+    1   3   3   4   4
+    >>> df[:, 0]
+    Traceback (most recent call last):
+    InvalidIndexError: (slice(None, None, None), 0)
     """
+
+
+class DataError(Exception):
+    """
+    Exceptionn raised when performing an operation on non-numerical data.
+
+    For example, calling ``ohlc`` on a non-numerical column or a function
+    on a rolling window.
+
+    Examples
+    --------
+    >>> ser = pd.Series(["a", "b", "c"])
+    >>> ser.rolling(2).sum()
+    Traceback (most recent call last):
+    DataError: No numeric types to aggregate
+    """
+
+
+class SpecificationError(Exception):
+    """
+    Exception raised by ``agg`` when the functions are ill-specified.
+
+    The exception raised in two scenarios.
+
+    The first way is calling ``agg`` on a
+    Dataframe or Series using a nested renamer (dict-of-dict).
+
+    The second way is calling ``agg`` on a Dataframe with duplicated functions
+    names without assigning column name.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame({"A": [1, 1, 1, 2, 2], "B": range(5), "C": range(5)})
+    >>> df.groupby("A").B.agg({"foo": "count"})  # doctest: +SKIP
+    ... # SpecificationError: nested renamer is not supported
+
+    >>> df.groupby("A").agg({"B": {"foo": ["sum", "max"]}})  # doctest: +SKIP
+    ... # SpecificationError: nested renamer is not supported
+
+    >>> df.groupby("A").agg(["min", "min"])  # doctest: +SKIP
+    ... # SpecificationError: nested renamer is not supported
+    """
+
+
+class ChainedAssignmentError(Warning):
+    """
+    Warning raised when trying to set using chained assignment.
+
+    When the ``mode.copy_on_write`` option is enabled, chained assignment can
+    never work. In such a situation, we are always setting into a temporary
+    object that is the result of an indexing operation (getitem), which under
+    Copy-on-Write always behaves as a copy. Thus, assigning through a chain
+    can never update the original Series or DataFrame.
+
+    For more information on Copy-on-Write,
+    see :ref:`the user guide<copy_on_write>`.
+
+    Examples
+    --------
+    >>> pd.options.mode.copy_on_write = True
+    >>> df = pd.DataFrame({"A": [1, 1, 1, 2, 2]}, columns=["A"])
+    >>> df["A"][0:3] = 10  # doctest: +SKIP
+    ... # ChainedAssignmentError: ...
+    >>> pd.options.mode.copy_on_write = False
+    """
+
+
+class NumExprClobberingError(NameError):
+    """
+    Exception raised when trying to use a built-in numexpr name as a variable name.
+
+    ``eval`` or ``query`` will throw the error if the engine is set
+    to 'numexpr'. 'numexpr' is the default engine value for these methods if the
+    numexpr package is installed.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame({"abs": [1, 1, 1]})
+    >>> df.query("abs > 2")  # doctest: +SKIP
+    ... # NumExprClobberingError: Variables in expression "(abs) > (2)" overlap...
+    >>> sin, a = 1, 2
+    >>> pd.eval("sin + a", engine="numexpr")  # doctest: +SKIP
+    ... # NumExprClobberingError: Variables in expression "(sin) + (a)" overlap...
+    """
+
+
+class UndefinedVariableError(NameError):
+    """
+    Exception raised by ``query`` or ``eval`` when using an undefined variable name.
+
+    It will also specify whether the undefined variable is local or not.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame({"A": [1, 1, 1]})
+    >>> df.query("A > x")  # doctest: +SKIP
+    ... # UndefinedVariableError: name 'x' is not defined
+    >>> df.query("A > @y")  # doctest: +SKIP
+    ... # UndefinedVariableError: local variable 'y' is not defined
+    >>> pd.eval("x + 1")  # doctest: +SKIP
+    ... # UndefinedVariableError: name 'x' is not defined
+    """
+
+    def __init__(self, name: str, is_local: bool | None = None) -> None:
+        base_msg = f"{name!r} is not defined"
+        if is_local:
+            msg = f"local variable {base_msg}"
+        else:
+            msg = f"name {base_msg}"
+        super().__init__(msg)
+
+
+class IndexingError(Exception):
+    """
+    Exception is raised when trying to index and there is a mismatch in dimensions.
+
+    Raised by properties like :attr:`.pandas.DataFrame.iloc` when
+    an indexer is out of bounds or :attr:`.pandas.DataFrame.loc` when its index is
+    unalignable to the frame index.
+
+    See Also
+    --------
+    DataFrame.iloc : Purely integer-location based indexing for \
+    selection by position.
+    DataFrame.loc : Access a group of rows and columns by label(s) \
+    or a boolean array.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame({"A": [1, 1, 1]})
+    >>> df.loc[..., ..., "A"]  # doctest: +SKIP
+    ... # IndexingError: indexer may only contain one '...' entry
+    >>> df = pd.DataFrame({"A": [1, 1, 1]})
+    >>> df.loc[1, ..., ...]  # doctest: +SKIP
+    ... # IndexingError: Too many indexers
+    >>> df[pd.Series([True], dtype=bool)]  # doctest: +SKIP
+    ... # IndexingError: Unalignable boolean Series provided as indexer...
+    >>> s = pd.Series(range(2), index=pd.MultiIndex.from_product([["a", "b"], ["c"]]))
+    >>> s.loc["a", "c", "d"]  # doctest: +SKIP
+    ... # IndexingError: Too many indexers
+    """
+
+
+class PyperclipException(RuntimeError):
+    """
+    Exception raised when clipboard functionality is unsupported.
+
+    Raised by ``to_clipboard()`` and ``read_clipboard()``.
+    """
+
+
+class PyperclipWindowsException(PyperclipException):
+    """
+    Exception raised when clipboard functionality is unsupported by Windows.
+
+    Access to the clipboard handle would be denied due to some other
+    window process is accessing it.
+    """
+
+    def __init__(self, message: str) -> None:
+        # attr only exists on Windows, so typing fails on other platforms
+        message += f" ({ctypes.WinError()})"  # type: ignore[attr-defined]
+        super().__init__(message)
+
+
+class CSSWarning(UserWarning):
+    """
+    Warning is raised when converting css styling fails.
+
+    This can be due to the styling not having an equivalent value or because the
+    styling isn't properly formatted.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame({"A": [1, 1, 1]})
+    >>> df.style.map(lambda x: "background-color: blueGreenRed;").to_excel(
+    ...     "styled.xlsx"
+    ... )  # doctest: +SKIP
+    CSSWarning: Unhandled color format: 'blueGreenRed'
+    >>> df.style.map(lambda x: "border: 1px solid red red;").to_excel(
+    ...     "styled.xlsx"
+    ... )  # doctest: +SKIP
+    CSSWarning: Unhandled color format: 'blueGreenRed'
+    """
+
+
+class PossibleDataLossError(Exception):
+    """
+    Exception raised when trying to open a HDFStore file when already opened.
+
+    Examples
+    --------
+    >>> store = pd.HDFStore("my-store", "a")  # doctest: +SKIP
+    >>> store.open("w")  # doctest: +SKIP
+    """
+
+
+class ClosedFileError(Exception):
+    """
+    Exception is raised when trying to perform an operation on a closed HDFStore file.
+
+    Examples
+    --------
+    >>> store = pd.HDFStore("my-store", "a")  # doctest: +SKIP
+    >>> store.close()  # doctest: +SKIP
+    >>> store.keys()  # doctest: +SKIP
+    ... # ClosedFileError: my-store file is not open!
+    """
+
+
+class IncompatibilityWarning(Warning):
+    """
+    Warning raised when trying to use where criteria on an incompatible HDF5 file.
+    """
+
+
+class AttributeConflictWarning(Warning):
+    """
+    Warning raised when index attributes conflict when using HDFStore.
+
+    Occurs when attempting to append an index with a different
+    name than the existing index on an HDFStore or attempting to append an index with a
+    different frequency than the existing index on an HDFStore.
+
+    Examples
+    --------
+    >>> idx1 = pd.Index(["a", "b"], name="name1")
+    >>> df1 = pd.DataFrame([[1, 2], [3, 4]], index=idx1)
+    >>> df1.to_hdf("file", "data", "w", append=True)  # doctest: +SKIP
+    >>> idx2 = pd.Index(["c", "d"], name="name2")
+    >>> df2 = pd.DataFrame([[5, 6], [7, 8]], index=idx2)
+    >>> df2.to_hdf("file", "data", "a", append=True)  # doctest: +SKIP
+    AttributeConflictWarning: the [index_name] attribute of the existing index is
+    [name1] which conflicts with the new [name2]...
+    """
+
+
+class DatabaseError(OSError):
+    """
+    Error is raised when executing SQL with bad syntax or SQL that throws an error.
+
+    Raised by :func:`.pandas.read_sql` when a bad SQL statement is passed in.
+
+    See Also
+    --------
+    read_sql : Read SQL query or database table into a DataFrame.
+
+    Examples
+    --------
+    >>> from sqlite3 import connect
+    >>> conn = connect(":memory:")
+    >>> pd.read_sql("select * test", conn)  # doctest: +SKIP
+    """
+
+
+class PossiblePrecisionLoss(Warning):
+    """
+    Warning raised by to_stata on a column with a value outside or equal to int64.
+
+    When the column value is outside or equal to the int64 value the column is
+    converted to a float64 dtype.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame({"s": pd.Series([1, 2**53], dtype=np.int64)})
+    >>> df.to_stata("test")  # doctest: +SKIP
+    """
+
+
+class ValueLabelTypeMismatch(Warning):
+    """
+    Warning raised by to_stata on a category column that contains non-string values.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame({"categories": pd.Series(["a", 2], dtype="category")})
+    >>> df.to_stata("test")  # doctest: +SKIP
+    """
+
+
+class InvalidColumnName(Warning):
+    """
+    Warning raised by to_stata the column contains a non-valid stata name.
+
+    Because the column name is an invalid Stata variable, the name needs to be
+    converted.
+
+    See Also
+    --------
+    DataFrame.to_stata : Export DataFrame object to Stata dta format.
+
+    Examples
+    --------
+    >>> df = pd.DataFrame({"0categories": pd.Series([2, 2])})
+    >>> df.to_stata("test")  # doctest: +SKIP
+    """
+
+
+class CategoricalConversionWarning(Warning):
+    """
+    Warning is raised when reading a partial labeled Stata file using a iterator.
+
+    Examples
+    --------
+    >>> from pandas.io.stata import StataReader
+    >>> with StataReader("dta_file", chunksize=2) as reader:  # doctest: +SKIP
+    ...     for i, block in enumerate(reader):
+    ...         print(i, block)
+    ... # CategoricalConversionWarning: One or more series with value labels...
+    """
+
+
+class LossySetitemError(Exception):
+    """
+    Raised when trying to do a __setitem__ on an np.ndarray that is not lossless.
+
+    Notes
+    -----
+    This is an internal error.
+    """
+
+
+class NoBufferPresent(Exception):
+    """
+    Exception is raised in _get_data_buffer to signal that there is no requested buffer.
+    """
+
+
+class InvalidComparison(Exception):
+    """
+    Exception is raised by _validate_comparison_value to indicate an invalid comparison.
+
+    Notes
+    -----
+    This is an internal error.
+    """
+
+
+__all__ = [
+    "AbstractMethodError",
+    "AttributeConflictWarning",
+    "CategoricalConversionWarning",
+    "ChainedAssignmentError",
+    "ClosedFileError",
+    "CSSWarning",
+    "DatabaseError",
+    "DataError",
+    "DtypeWarning",
+    "DuplicateLabelError",
+    "EmptyDataError",
+    "IncompatibilityWarning",
+    "IntCastingNaNError",
+    "InvalidColumnName",
+    "InvalidComparison",
+    "InvalidIndexError",
+    "InvalidVersion",
+    "IndexingError",
+    "LossySetitemError",
+    "MergeError",
+    "NoBufferPresent",
+    "NullFrequencyError",
+    "NumbaUtilError",
+    "NumExprClobberingError",
+    "OptionError",
+    "OutOfBoundsDatetime",
+    "OutOfBoundsTimedelta",
+    "ParserError",
+    "ParserWarning",
+    "PerformanceWarning",
+    "PossibleDataLossError",
+    "PossiblePrecisionLoss",
+    "PyperclipException",
+    "PyperclipWindowsException",
+    "SpecificationError",
+    "UndefinedVariableError",
+    "UnsortedIndexError",
+    "UnsupportedFunctionCall",
+    "ValueLabelTypeMismatch",
+]

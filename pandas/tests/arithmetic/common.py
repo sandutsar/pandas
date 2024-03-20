@@ -1,6 +1,7 @@
 """
 Assertion helpers for arithmetic tests.
 """
+
 import numpy as np
 import pytest
 
@@ -11,7 +12,26 @@ from pandas import (
     array,
 )
 import pandas._testing as tm
-from pandas.core.arrays import PandasArray
+from pandas.core.arrays import (
+    BooleanArray,
+    NumpyExtensionArray,
+)
+
+
+def assert_cannot_add(left, right, msg="cannot add"):
+    """
+    Helper to assert that left and right cannot be added.
+
+    Parameters
+    ----------
+    left : object
+    right : object
+    msg : str, default "cannot add"
+    """
+    with pytest.raises(TypeError, match=msg):
+        left + right
+    with pytest.raises(TypeError, match=msg):
+        right + left
 
 
 def assert_invalid_addsub_type(left, right, msg=None):
@@ -76,10 +96,18 @@ def assert_invalid_comparison(left, right, box):
 
     def xbox2(x):
         # Eventually we'd like this to be tighter, but for now we'll
-        #  just exclude PandasArray[bool]
-        if isinstance(x, PandasArray):
+        #  just exclude NumpyExtensionArray[bool]
+        if isinstance(x, NumpyExtensionArray):
             return x._ndarray
+        if isinstance(x, BooleanArray):
+            # NB: we are assuming no pd.NAs for now
+            return x.astype(bool)
         return x
+
+    # rev_box: box to use for reversed comparisons
+    rev_box = xbox
+    if isinstance(right, Index) and isinstance(left, Series):
+        rev_box = np.array
 
     result = xbox2(left == right)
     expected = xbox(np.zeros(result.shape, dtype=np.bool_))
@@ -87,13 +115,13 @@ def assert_invalid_comparison(left, right, box):
     tm.assert_equal(result, expected)
 
     result = xbox2(right == left)
-    tm.assert_equal(result, expected)
+    tm.assert_equal(result, rev_box(expected))
 
     result = xbox2(left != right)
     tm.assert_equal(result, ~expected)
 
     result = xbox2(right != left)
-    tm.assert_equal(result, ~expected)
+    tm.assert_equal(result, rev_box(~expected))
 
     msg = "|".join(
         [

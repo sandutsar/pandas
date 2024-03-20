@@ -13,7 +13,6 @@ import pandas._testing as tm
 
 class TestDataFrameConcat:
     def test_concat_multiple_frames_dtypes(self):
-
         # GH#2759
         df1 = DataFrame(data=np.ones((10, 2)), columns=["foo", "bar"], dtype=np.float64)
         df2 = DataFrame(data=np.ones((10, 2)), dtype=np.float32)
@@ -193,15 +192,25 @@ class TestDataFrameConcat:
         tm.assert_frame_equal(result, expected)
         tm.assert_index_equal(result.index.levels[1], Index([1, 3], name="date"))
 
-    @pytest.mark.parametrize("ignore_index", [True, False])
-    @pytest.mark.parametrize("order", ["C", "F"])
-    @pytest.mark.parametrize("axis", [0, 1])
-    def test_concat_copies(self, axis, order, ignore_index):
-        # based on asv ConcatDataFrames
-        df = DataFrame(np.zeros((10000, 200), dtype=np.float32, order=order))
+    def test_outer_sort_columns(self):
+        # GH#47127
+        df1 = DataFrame({"A": [0], "B": [1], 0: 1})
+        df2 = DataFrame({"A": [100]})
+        result = concat([df1, df2], ignore_index=True, join="outer", sort=True)
+        expected = DataFrame({0: [1.0, np.nan], "A": [0, 100], "B": [1.0, np.nan]})
+        tm.assert_frame_equal(result, expected)
 
-        res = concat([df] * 5, axis=axis, ignore_index=ignore_index, copy=True)
+    def test_inner_sort_columns(self):
+        # GH#47127
+        df1 = DataFrame({"A": [0], "B": [1], 0: 1})
+        df2 = DataFrame({"A": [100], 0: 2})
+        result = concat([df1, df2], ignore_index=True, join="inner", sort=True)
+        expected = DataFrame({0: [1, 2], "A": [0, 100]})
+        tm.assert_frame_equal(result, expected)
 
-        for arr in res._iter_column_arrays():
-            for arr2 in df._iter_column_arrays():
-                assert not np.shares_memory(arr, arr2)
+    def test_sort_columns_one_df(self):
+        # GH#47127
+        df1 = DataFrame({"A": [100], 0: 2})
+        result = concat([df1], ignore_index=True, join="inner", sort=True)
+        expected = DataFrame({0: [2], "A": [100]})
+        tm.assert_frame_equal(result, expected)

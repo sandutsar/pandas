@@ -8,7 +8,6 @@ from pandas.core.dtypes.common import is_number
 
 from pandas import (
     DataFrame,
-    Index,
     Series,
 )
 import pandas._testing as tm
@@ -26,13 +25,13 @@ from pandas.tests.apply.common import (
         pytest.param([1], {}, id="axis_from_args"),
         pytest.param([], {"axis": 1}, id="axis_from_kwds"),
         pytest.param([], {"numeric_only": True}, id="optional_kwds"),
-        pytest.param([1, None], {"numeric_only": True}, id="args_and_kwds"),
+        pytest.param([1, True], {"numeric_only": True}, id="args_and_kwds"),
     ],
 )
 @pytest.mark.parametrize("how", ["agg", "apply"])
 def test_apply_with_string_funcs(request, float_frame, func, args, kwds, how):
     if len(args) > 1 and how == "agg":
-        request.node.add_marker(
+        request.applymarker(
             pytest.mark.xfail(
                 raises=TypeError,
                 reason="agg/apply signature mismatch - agg passes 2nd "
@@ -44,17 +43,15 @@ def test_apply_with_string_funcs(request, float_frame, func, args, kwds, how):
     tm.assert_series_equal(result, expected)
 
 
-def test_with_string_args(datetime_series):
-
-    for arg in ["sum", "mean", "min", "max", "std"]:
-        result = datetime_series.apply(arg)
-        expected = getattr(datetime_series, arg)()
-        assert result == expected
+def test_with_string_args(datetime_series, all_numeric_reductions):
+    result = datetime_series.apply(all_numeric_reductions)
+    expected = getattr(datetime_series, all_numeric_reductions)()
+    assert result == expected
 
 
 @pytest.mark.parametrize("op", ["mean", "median", "std", "var"])
 @pytest.mark.parametrize("how", ["agg", "apply"])
-def test_apply_np_reducer(float_frame, op, how):
+def test_apply_np_reducer(op, how):
     # GH 39116
     float_frame = DataFrame({"a": [1, 2], "b": [3, 4]})
     result = getattr(float_frame, how)(op)
@@ -80,7 +77,9 @@ def test_apply_np_transformer(float_frame, op, how):
     if op in ["log", "sqrt"]:
         warn = RuntimeWarning
 
-    with tm.assert_produces_warning(warn):
+    with tm.assert_produces_warning(warn, check_stacklevel=False):
+        # float_frame fixture is defined in conftest.py, so we don't check the
+        # stacklevel as otherwise the test would fail.
         result = getattr(float_frame, how)(op)
         expected = getattr(np, op)(float_frame)
     tm.assert_frame_equal(result, expected)
@@ -135,7 +134,9 @@ def test_agg_cython_table_series(series, func, expected):
     # GH21224
     # test reducing functions in
     # pandas.core.base.SelectionMixin._cython_table
-    result = series.agg(func)
+    warn = None if isinstance(func, str) else FutureWarning
+    with tm.assert_produces_warning(warn, match="is currently using Series.*"):
+        result = series.agg(func)
     if is_number(expected):
         assert np.isclose(result, expected, equal_nan=True)
     else:
@@ -148,8 +149,8 @@ def test_agg_cython_table_series(series, func, expected):
         tm.get_cython_table_params(
             Series(dtype=np.float64),
             [
-                ("cumprod", Series([], Index([]), dtype=np.float64)),
-                ("cumsum", Series([], Index([]), dtype=np.float64)),
+                ("cumprod", Series([], dtype=np.float64)),
+                ("cumsum", Series([], dtype=np.float64)),
             ],
         ),
         tm.get_cython_table_params(
@@ -168,7 +169,9 @@ def test_agg_cython_table_transform_series(series, func, expected):
     # GH21224
     # test transforming functions in
     # pandas.core.base.SelectionMixin._cython_table (cumprod, cumsum)
-    result = series.agg(func)
+    warn = None if isinstance(func, str) else FutureWarning
+    with tm.assert_produces_warning(warn, match="is currently using Series.*"):
+        result = series.agg(func)
     tm.assert_series_equal(result, expected)
 
 
@@ -211,7 +214,10 @@ def test_agg_cython_table_frame(df, func, expected, axis):
     # GH 21224
     # test reducing functions in
     # pandas.core.base.SelectionMixin._cython_table
-    result = df.agg(func, axis=axis)
+    warn = None if isinstance(func, str) else FutureWarning
+    with tm.assert_produces_warning(warn, match="is currently using DataFrame.*"):
+        # GH#53425
+        result = df.agg(func, axis=axis)
     tm.assert_series_equal(result, expected)
 
 
@@ -234,45 +240,54 @@ def test_agg_cython_table_transform_frame(df, func, expected, axis):
     # GH 21224
     # test transforming functions in
     # pandas.core.base.SelectionMixin._cython_table (cumprod, cumsum)
-    if axis == "columns" or axis == 1:
+    if axis in ("columns", 1):
         # operating blockwise doesn't let us preserve dtypes
         expected = expected.astype("float64")
 
-    result = df.agg(func, axis=axis)
+    warn = None if isinstance(func, str) else FutureWarning
+    with tm.assert_produces_warning(warn, match="is currently using DataFrame.*"):
+        # GH#53425
+        result = df.agg(func, axis=axis)
     tm.assert_frame_equal(result, expected)
 
 
 @pytest.mark.parametrize("op", series_transform_kernels)
-def test_transform_groupby_kernel_series(string_series, op):
+def test_transform_groupby_kernel_series(request, string_series, op):
     # GH 35964
-
+    if op == "ngroup":
+        request.applymarker(
+            pytest.mark.xfail(raises=ValueError, reason="ngroup not valid for NDFrame")
+        )
     args = [0.0] if op == "fillna" else []
     ones = np.ones(string_series.shape[0])
-    expected = string_series.groupby(ones).transform(op, *args)
+
+    warn = FutureWarning if op == "fillna" else None
+    msg = "SeriesGroupBy.fillna is deprecated"
+    with tm.assert_produces_warning(warn, match=msg):
+        expected = string_series.groupby(ones).transform(op, *args)
     result = string_series.transform(op, 0, *args)
     tm.assert_series_equal(result, expected)
 
 
 @pytest.mark.parametrize("op", frame_transform_kernels)
-def test_transform_groupby_kernel_frame(
-    axis, float_frame, op, using_array_manager, request
-):
-    # GH 35964
-    if using_array_manager and op == "pct_change" and axis in (1, "columns"):
-        # TODO(ArrayManager) shift with axis=1
-        request.node.add_marker(
-            pytest.mark.xfail(
-                reason="shift axis=1 not yet implemented for ArrayManager"
-            )
+def test_transform_groupby_kernel_frame(request, float_frame, op):
+    if op == "ngroup":
+        request.applymarker(
+            pytest.mark.xfail(raises=ValueError, reason="ngroup not valid for NDFrame")
         )
 
+    # GH 35964
+
     args = [0.0] if op == "fillna" else []
-    if axis == 0 or axis == "index":
-        ones = np.ones(float_frame.shape[0])
-    else:
-        ones = np.ones(float_frame.shape[1])
-    expected = float_frame.groupby(ones, axis=axis).transform(op, *args)
-    result = float_frame.transform(op, axis, *args)
+    ones = np.ones(float_frame.shape[0])
+    gb = float_frame.groupby(ones)
+
+    warn = FutureWarning if op == "fillna" else None
+    op_msg = "DataFrameGroupBy.fillna is deprecated"
+    with tm.assert_produces_warning(warn, match=op_msg):
+        expected = gb.transform(op, *args)
+
+    result = float_frame.transform(op, 0, *args)
     tm.assert_frame_equal(result, expected)
 
     # same thing, but ensuring we have multiple blocks
@@ -280,12 +295,10 @@ def test_transform_groupby_kernel_frame(
     float_frame["E"] = float_frame["A"].copy()
     assert len(float_frame._mgr.arrays) > 1
 
-    if axis == 0 or axis == "index":
-        ones = np.ones(float_frame.shape[0])
-    else:
-        ones = np.ones(float_frame.shape[1])
-    expected2 = float_frame.groupby(ones, axis=axis).transform(op, *args)
-    result2 = float_frame.transform(op, axis, *args)
+    ones = np.ones(float_frame.shape[0])
+    gb2 = float_frame.groupby(ones)
+    expected2 = gb2.transform(op, *args)
+    result2 = float_frame.transform(op, 0, *args)
     tm.assert_frame_equal(result2, expected2)
 
 

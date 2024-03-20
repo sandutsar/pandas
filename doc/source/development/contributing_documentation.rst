@@ -12,7 +12,11 @@ you don't have to be an expert on pandas to do so! In fact,
 there are sections of the docs that are worse off after being written by
 experts. If something in the docs doesn't make sense to you, updating the
 relevant section after you figure it out is a great way to ensure it will help
-the next person.
+the next person. Please visit the `issues page <https://github.com/pandas-dev/pandas/issues?page=1&q=is%3Aopen+sort%3Aupdated-desc+label%3ADocs>`__
+for a full list of issues that are currently open regarding the
+pandas documentation.
+
+
 
 .. contents:: Documentation:
    :local:
@@ -89,16 +93,6 @@ Some other important things to know about the docs:
   ``doc/source/reference``, else Sphinx
   will emit a warning.
 
-.. note::
-
-    The ``.rst`` files are used to automatically generate Markdown and HTML versions
-    of the docs. For this reason, please do not edit ``CONTRIBUTING.md`` directly,
-    but instead make any changes to ``doc/source/development/contributing.rst``. Then, to
-    generate ``CONTRIBUTING.md``, use `pandoc <https://johnmacfarlane.net/pandoc/>`_
-    with the following command::
-
-      pandoc doc/source/development/contributing.rst -t markdown_github > CONTRIBUTING.md
-
 The utility script ``scripts/validate_docstrings.py`` can be used to get a csv
 summary of the API documentation. And also validate common errors in the docstring
 of a specific class, function or method. The summary also compares the list of
@@ -133,6 +127,7 @@ for some tips and tricks to get the doctests passing.
 When doing a PR with a docstring update, it is good to post the
 output of the validation script in a comment on github.
 
+.. _contributing.howto-build-docs:
 
 How to build the pandas documentation
 ---------------------------------------
@@ -194,18 +189,16 @@ to speed up the documentation build. You can override this::
     python make.py html --num-jobs 4
 
 Open the following file in a web browser to see the full documentation you
-just built::
-
-    doc/build/html/index.html
+just built ``doc/build/html/index.html``.
 
 And you'll have the satisfaction of seeing your new and improved documentation!
 
 .. _contributing.dev_docs:
 
-Building master branch documentation
+Building main branch documentation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When pull requests are merged into the pandas ``master`` branch, the main parts of
+When pull requests are merged into the pandas ``main`` branch, the main parts of
 the documentation are also built by Travis-CI. These docs are then hosted `here
 <https://pandas.pydata.org/docs/dev/>`__, see also
 the :any:`Continuous Integration <contributing.ci>` section.

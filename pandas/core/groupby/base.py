@@ -1,12 +1,14 @@
 """
-Provide basic components for groupby. These definitions
-hold the allowlist of methods that are exposed on the
-SeriesGroupBy and the DataFrameGroupBy objects.
+Provide basic components for groupby.
 """
+
 from __future__ import annotations
 
 import dataclasses
-from typing import Hashable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Hashable
 
 
 @dataclasses.dataclass(order=True, frozen=True)
@@ -18,36 +20,6 @@ class OutputKey:
 # special case to prevent duplicate plots when catching exceptions when
 # forwarding methods from NDFrames
 plotting_methods = frozenset(["plot", "hist"])
-
-common_apply_allowlist = (
-    frozenset(
-        [
-            "quantile",
-            "fillna",
-            "mad",
-            "take",
-            "idxmax",
-            "idxmin",
-            "tshift",
-            "skew",
-            "corr",
-            "cov",
-            "diff",
-        ]
-    )
-    | plotting_methods
-)
-
-series_apply_allowlist: frozenset[str] = (
-    common_apply_allowlist
-    | frozenset(
-        {"nlargest", "nsmallest", "is_monotonic_increasing", "is_monotonic_decreasing"}
-    )
-) | frozenset(["dtype", "unique"])
-
-dataframe_apply_allowlist: frozenset[str] = common_apply_allowlist | frozenset(
-    ["dtypes", "corrwith"]
-)
 
 # cythonized transformations or canned "agg+broadcast", which do not
 # require postprocessing of the result by transform.
@@ -65,13 +37,10 @@ reduction_kernels = frozenset(
         "idxmax",
         "idxmin",
         "last",
-        "mad",
         "max",
         "mean",
         "median",
         "min",
-        "ngroup",
-        "nth",
         "nunique",
         "prod",
         # as long as `quantile`'s signature accepts only
@@ -90,9 +59,10 @@ reduction_kernels = frozenset(
 # List of transformation functions.
 # a transformation is a function that, for each group,
 # produces a result that has the same shape as the group.
+
+
 transformation_kernels = frozenset(
     [
-        "backfill",
         "bfill",
         "cumcount",
         "cummax",
@@ -101,12 +71,10 @@ transformation_kernels = frozenset(
         "cumsum",
         "diff",
         "ffill",
-        "fillna",
-        "pad",
+        "ngroup",
         "pct_change",
         "rank",
         "shift",
-        "tshift",
     ]
 )
 
@@ -123,7 +91,6 @@ groupby_other_methods = frozenset(
         "corr",
         "cov",
         "describe",
-        "dtypes",
         "expanding",
         "ewm",
         "filter",
@@ -134,6 +101,7 @@ groupby_other_methods = frozenset(
         "indices",
         "ndim",
         "ngroups",
+        "nth",
         "ohlc",
         "pipe",
         "plot",
@@ -143,6 +111,7 @@ groupby_other_methods = frozenset(
         "take",
         "transform",
         "sample",
+        "value_counts",
     ]
 )
 # Valid values  of `name` for `groupby.transform(name)`

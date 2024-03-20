@@ -10,20 +10,18 @@ import numpy as np
 from pandas import (
     Categorical,
     DataFrame,
+    Index,
     concat,
     date_range,
+    period_range,
     read_csv,
     to_datetime,
 )
 
-from ..pandas_vb_common import (
-    BaseIO,
-    tm,
-)
+from ..pandas_vb_common import BaseIO
 
 
 class ToCSV(BaseIO):
-
     fname = "__test__.csv"
     params = ["wide", "long", "mixed"]
     param_names = ["kind"]
@@ -55,8 +53,26 @@ class ToCSV(BaseIO):
         self.df.to_csv(self.fname)
 
 
-class ToCSVDatetime(BaseIO):
+class ToCSVMultiIndexUnusedLevels(BaseIO):
+    fname = "__test__.csv"
 
+    def setup(self):
+        df = DataFrame({"a": np.random.randn(100_000), "b": 1, "c": 1})
+        self.df = df.set_index(["a", "b"])
+        self.df_unused_levels = self.df.iloc[:10_000]
+        self.df_single_index = df.set_index(["a"]).iloc[:10_000]
+
+    def time_full_frame(self):
+        self.df.to_csv(self.fname)
+
+    def time_sliced_frame(self):
+        self.df_unused_levels.to_csv(self.fname)
+
+    def time_single_index_frame(self):
+        self.df_single_index.to_csv(self.fname)
+
+
+class ToCSVDatetime(BaseIO):
     fname = "__test__.csv"
 
     def setup(self):
@@ -67,30 +83,94 @@ class ToCSVDatetime(BaseIO):
         self.data.to_csv(self.fname, date_format="%Y%m%d")
 
 
-class ToCSVDatetimeBig(BaseIO):
+class ToCSVDatetimeIndex(BaseIO):
+    fname = "__test__.csv"
 
+    def setup(self):
+        rng = date_range("2000", periods=100_000, freq="s")
+        self.data = DataFrame({"a": 1}, index=rng)
+
+    def time_frame_date_formatting_index(self):
+        self.data.to_csv(self.fname, date_format="%Y-%m-%d %H:%M:%S")
+
+    def time_frame_date_no_format_index(self):
+        self.data.to_csv(self.fname)
+
+
+class ToCSVPeriod(BaseIO):
+    fname = "__test__.csv"
+
+    params = ([1000, 10000], ["D", "h"])
+    param_names = ["nobs", "freq"]
+
+    def setup(self, nobs, freq):
+        rng = period_range(start="2000-01-01", periods=nobs, freq=freq)
+        self.data = DataFrame(rng)
+        if freq == "D":
+            self.default_fmt = "%Y-%m-%d"
+        elif freq == "h":
+            self.default_fmt = "%Y-%m-%d %H:00"
+
+    def time_frame_period_formatting_default(self, nobs, freq):
+        self.data.to_csv(self.fname)
+
+    def time_frame_period_formatting_default_explicit(self, nobs, freq):
+        self.data.to_csv(self.fname, date_format=self.default_fmt)
+
+    def time_frame_period_formatting(self, nobs, freq):
+        # Nb: `date_format` is not actually taken into account here today, so the
+        # performance is currently identical to `time_frame_period_formatting_default`
+        # above. This timer is therefore expected to degrade when GH#51621 is fixed.
+        # (Remove this comment when GH#51621 is fixed.)
+        self.data.to_csv(self.fname, date_format="%Y-%m-%d___%H:%M:%S")
+
+
+class ToCSVPeriodIndex(BaseIO):
+    fname = "__test__.csv"
+
+    params = ([1000, 10000], ["D", "h"])
+    param_names = ["nobs", "freq"]
+
+    def setup(self, nobs, freq):
+        rng = period_range(start="2000-01-01", periods=nobs, freq=freq)
+        self.data = DataFrame({"a": 1}, index=rng)
+        if freq == "D":
+            self.default_fmt = "%Y-%m-%d"
+        elif freq == "h":
+            self.default_fmt = "%Y-%m-%d %H:00"
+
+    def time_frame_period_formatting_index(self, nobs, freq):
+        self.data.to_csv(self.fname, date_format="%Y-%m-%d___%H:%M:%S")
+
+    def time_frame_period_formatting_index_default(self, nobs, freq):
+        self.data.to_csv(self.fname)
+
+    def time_frame_period_formatting_index_default_explicit(self, nobs, freq):
+        self.data.to_csv(self.fname, date_format=self.default_fmt)
+
+
+class ToCSVDatetimeBig(BaseIO):
     fname = "__test__.csv"
     timeout = 1500
     params = [1000, 10000, 100000]
-    param_names = ["obs"]
+    param_names = ["nobs"]
 
-    def setup(self, obs):
+    def setup(self, nobs):
         d = "2018-11-29"
         dt = "2018-11-26 11:18:27.0"
         self.data = DataFrame(
             {
-                "dt": [np.datetime64(dt)] * obs,
-                "d": [np.datetime64(d)] * obs,
-                "r": [np.random.uniform()] * obs,
+                "dt": [np.datetime64(dt)] * nobs,
+                "d": [np.datetime64(d)] * nobs,
+                "r": [np.random.uniform()] * nobs,
             }
         )
 
-    def time_frame(self, obs):
+    def time_frame(self, nobs):
         self.data.to_csv(self.fname)
 
 
 class ToCSVIndexes(BaseIO):
-
     fname = "__test__.csv"
 
     @staticmethod
@@ -144,13 +224,13 @@ class StringIORewind:
 
 
 class ReadCSVDInferDatetimeFormat(StringIORewind):
+    params = [None, "custom", "iso8601", "ymd"]
+    param_names = ["format"]
 
-    params = ([True, False], ["custom", "iso8601", "ymd"])
-    param_names = ["infer_datetime_format", "format"]
-
-    def setup(self, infer_datetime_format, format):
+    def setup(self, format):
         rng = date_range("1/1/2000", periods=1000)
         formats = {
+            None: None,
             "custom": "%m/%d/%Y %H:%M:%S.%f",
             "iso8601": "%Y-%m-%d %H:%M:%S",
             "ymd": "%Y%m%d",
@@ -158,22 +238,20 @@ class ReadCSVDInferDatetimeFormat(StringIORewind):
         dt_format = formats[format]
         self.StringIO_input = StringIO("\n".join(rng.strftime(dt_format).tolist()))
 
-    def time_read_csv(self, infer_datetime_format, format):
+    def time_read_csv(self, format):
         read_csv(
             self.data(self.StringIO_input),
             header=None,
             names=["foo"],
             parse_dates=["foo"],
-            infer_datetime_format=infer_datetime_format,
         )
 
 
 class ReadCSVConcatDatetime(StringIORewind):
-
     iso8601 = "%Y-%m-%d %H:%M:%S"
 
     def setup(self):
-        rng = date_range("1/1/2000", periods=50000, freq="S")
+        rng = date_range("1/1/2000", periods=50000, freq="s")
         self.StringIO_input = StringIO("\n".join(rng.strftime(self.iso8601).tolist()))
 
     def time_read_csv(self):
@@ -182,12 +260,10 @@ class ReadCSVConcatDatetime(StringIORewind):
             header=None,
             names=["foo"],
             parse_dates=["foo"],
-            infer_datetime_format=False,
         )
 
 
 class ReadCSVConcatDatetimeBadDateValue(StringIORewind):
-
     params = (["nan", "0", ""],)
     param_names = ["bad_date_value"]
 
@@ -200,19 +276,17 @@ class ReadCSVConcatDatetimeBadDateValue(StringIORewind):
             header=None,
             names=["foo", "bar"],
             parse_dates=["foo"],
-            infer_datetime_format=False,
         )
 
 
 class ReadCSVSkipRows(BaseIO):
-
     fname = "__test__.csv"
     params = ([None, 10000], ["c", "python", "pyarrow"])
     param_names = ["skiprows", "engine"]
 
     def setup(self, skiprows, engine):
         N = 20000
-        index = tm.makeStringIndex(N)
+        index = Index([f"i-{i}" for i in range(N)], dtype=object)
         df = DataFrame(
             {
                 "float1": np.random.randn(N),
@@ -231,8 +305,8 @@ class ReadCSVSkipRows(BaseIO):
 
 class ReadUint64Integers(StringIORewind):
     def setup(self):
-        self.na_values = [2 ** 63 + 500]
-        arr = np.arange(10000).astype("uint64") + 2 ** 63
+        self.na_values = [2**63 + 500]
+        arr = np.arange(10000).astype("uint64") + 2**63
         self.data1 = StringIO("\n".join(arr.astype(str).tolist()))
         arr = arr.astype(object)
         arr[500] = -1
@@ -251,7 +325,6 @@ class ReadUint64Integers(StringIORewind):
 
 
 class ReadCSVThousands(BaseIO):
-
     fname = "__test__.csv"
     params = ([",", "|"], [None, ","], ["c", "python"])
     param_names = ["sep", "thousands", "engine"]
@@ -264,7 +337,7 @@ class ReadCSVThousands(BaseIO):
         if thousands is not None:
             fmt = f":{thousands}"
             fmt = "{" + fmt + "}"
-            df = df.applymap(lambda x: fmt.format(x))
+            df = df.map(lambda x: fmt.format(x))
         df.to_csv(self.fname, sep=sep)
 
     def time_thousands(self, sep, thousands, engine):
@@ -286,7 +359,6 @@ class ReadCSVComment(StringIORewind):
 
 
 class ReadCSVFloatPrecision(StringIORewind):
-
     params = ([",", ";"], [".", "_"], [None, "high", "round_trip"])
     param_names = ["sep", "decimal", "float_precision"]
 
@@ -295,7 +367,7 @@ class ReadCSVFloatPrecision(StringIORewind):
             "".join([random.choice(string.digits) for _ in range(28)])
             for _ in range(15)
         ]
-        rows = sep.join([f"0{decimal}" + "{}"] * 3) + "\n"
+        rows = sep.join([f"0{decimal}{{}}"] * 3) + "\n"
         data = rows * 5
         data = data.format(*floats) * 200  # 1000 x 3 strings csv
         self.StringIO_input = StringIO(data)
@@ -336,9 +408,11 @@ class ReadCSVEngine(StringIORewind):
     def time_read_bytescsv(self, engine):
         read_csv(self.data(self.BytesIO_input), engine=engine)
 
+    def peakmem_read_csv(self, engine):
+        read_csv(self.data(self.BytesIO_input), engine=engine)
+
 
 class ReadCSVCategorical(BaseIO):
-
     fname = "__test__.csv"
     params = ["c", "python"]
     param_names = ["engine"]
@@ -415,7 +489,6 @@ class ReadCSVCachedParseDates(StringIORewind):
 
 
 class ReadCSVMemoryGrowth(BaseIO):
-
     chunksize = 20
     num_rows = 1000
     fname = "__test__.csv"
@@ -423,7 +496,7 @@ class ReadCSVMemoryGrowth(BaseIO):
     param_names = ["engine"]
 
     def setup(self, engine):
-        with open(self.fname, "w") as f:
+        with open(self.fname, "w", encoding="utf-8") as f:
             for i in range(self.num_rows):
                 f.write(f"{i}\n")
 
@@ -461,7 +534,6 @@ class ReadCSVParseSpecialDate(StringIORewind):
 
 
 class ReadCSVMemMapUTF8:
-
     fname = "__test__.csv"
     number = 5
 
@@ -523,6 +595,42 @@ class ParseDateComparison(StringIORewind):
             self.data(self.StringIO_input), dtype={"date": str}, names=["date"]
         )
         to_datetime(df["date"], cache=cache_dates, format="%d-%m-%Y")
+
+
+class ReadCSVIndexCol(StringIORewind):
+    def setup(self):
+        count_elem = 100_000
+        data = "a,b\n" + "1,2\n" * count_elem
+        self.StringIO_input = StringIO(data)
+
+    def time_read_csv_index_col(self):
+        read_csv(self.StringIO_input, index_col="a")
+
+
+class ReadCSVDatePyarrowEngine(StringIORewind):
+    def setup(self):
+        count_elem = 100_000
+        data = "a\n" + "2019-12-31\n" * count_elem
+        self.StringIO_input = StringIO(data)
+
+    def time_read_csv_index_col(self):
+        read_csv(
+            self.StringIO_input,
+            parse_dates=["a"],
+            engine="pyarrow",
+            dtype_backend="pyarrow",
+        )
+
+
+class ReadCSVCParserLowMemory:
+    # GH 16798
+    def setup(self):
+        self.csv = StringIO(
+            "strings\n" + "\n".join(["x" * (1 << 20) for _ in range(2100)])
+        )
+
+    def peakmem_over_2gb_input(self):
+        read_csv(self.csv, engine="c", low_memory=False)
 
 
 from ..pandas_vb_common import setup  # noqa: F401 isort:skip

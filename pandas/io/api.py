@@ -2,8 +2,6 @@
 Data IO api
 """
 
-# flake8: noqa
-
 from pandas.io.clipboards import read_clipboard
 from pandas.io.excel import (
     ExcelFile,
@@ -11,7 +9,6 @@ from pandas.io.excel import (
     read_excel,
 )
 from pandas.io.feather_format import read_feather
-from pandas.io.gbq import read_gbq
 from pandas.io.html import read_html
 from pandas.io.json import read_json
 from pandas.io.orc import read_orc
@@ -38,3 +35,29 @@ from pandas.io.sql import (
 )
 from pandas.io.stata import read_stata
 from pandas.io.xml import read_xml
+
+__all__ = [
+    "ExcelFile",
+    "ExcelWriter",
+    "HDFStore",
+    "read_clipboard",
+    "read_csv",
+    "read_excel",
+    "read_feather",
+    "read_fwf",
+    "read_hdf",
+    "read_html",
+    "read_json",
+    "read_orc",
+    "read_parquet",
+    "read_pickle",
+    "read_sas",
+    "read_spss",
+    "read_sql",
+    "read_sql_query",
+    "read_sql_table",
+    "read_stata",
+    "read_table",
+    "read_xml",
+    "to_pickle",
+]

@@ -3,12 +3,13 @@ import warnings
 import numpy as np
 
 from pandas import (
+    NA,
     Categorical,
     DataFrame,
+    Index,
     Series,
 )
-
-from .pandas_vb_common import tm
+from pandas.arrays import StringArray
 
 
 class Dtypes:
@@ -17,47 +18,40 @@ class Dtypes:
 
     def setup(self, dtype):
         try:
-            self.s = Series(tm.makeStringIndex(10 ** 5), dtype=dtype)
-        except ImportError:
-            raise NotImplementedError
+            self.s = Series(
+                Index([f"i-{i}" for i in range(10000)], dtype=object)._values,
+                dtype=dtype,
+            )
+        except ImportError as err:
+            raise NotImplementedError from err
 
 
 class Construction:
+    params = (
+        ["series", "frame", "categorical_series"],
+        ["str", "string[python]", "string[pyarrow]"],
+    )
+    param_names = ["pd_type", "dtype"]
+    pd_mapping = {"series": Series, "frame": DataFrame, "categorical_series": Series}
+    dtype_mapping = {"str": "str", "string[python]": object, "string[pyarrow]": object}
 
-    params = ["str", "string"]
-    param_names = ["dtype"]
+    def setup(self, pd_type, dtype):
+        series_arr = np.array(
+            [str(i) * 10 for i in range(100_000)], dtype=self.dtype_mapping[dtype]
+        )
+        if pd_type == "series":
+            self.arr = series_arr
+        elif pd_type == "frame":
+            self.arr = series_arr.reshape((50_000, 2)).copy()
+        elif pd_type == "categorical_series":
+            # GH37371. Testing construction of string series/frames from ExtensionArrays
+            self.arr = Categorical(series_arr)
 
-    def setup(self, dtype):
-        self.series_arr = tm.rands_array(nchars=10, size=10 ** 5)
-        self.frame_arr = self.series_arr.reshape((50_000, 2)).copy()
+    def time_construction(self, pd_type, dtype):
+        self.pd_mapping[pd_type](self.arr, dtype=dtype)
 
-        # GH37371. Testing construction of string series/frames from ExtensionArrays
-        self.series_cat_arr = Categorical(self.series_arr)
-        self.frame_cat_arr = Categorical(self.frame_arr)
-
-    def time_series_construction(self, dtype):
-        Series(self.series_arr, dtype=dtype)
-
-    def peakmem_series_construction(self, dtype):
-        Series(self.series_arr, dtype=dtype)
-
-    def time_frame_construction(self, dtype):
-        DataFrame(self.frame_arr, dtype=dtype)
-
-    def peakmem_frame_construction(self, dtype):
-        DataFrame(self.frame_arr, dtype=dtype)
-
-    def time_cat_series_construction(self, dtype):
-        Series(self.series_cat_arr, dtype=dtype)
-
-    def peakmem_cat_series_construction(self, dtype):
-        Series(self.series_cat_arr, dtype=dtype)
-
-    def time_cat_frame_construction(self, dtype):
-        DataFrame(self.frame_cat_arr, dtype=dtype)
-
-    def peakmem_cat_frame_construction(self, dtype):
-        DataFrame(self.frame_cat_arr, dtype=dtype)
+    def peakmem_construction(self, pd_type, dtype):
+        self.pd_mapping[pd_type](self.arr, dtype=dtype)
 
 
 class Methods(Dtypes):
@@ -175,13 +169,12 @@ class Methods(Dtypes):
 
 
 class Repeat:
-
     params = ["int", "array"]
     param_names = ["repeats"]
 
     def setup(self, repeats):
-        N = 10 ** 5
-        self.s = Series(tm.makeStringIndex(N))
+        N = 10**5
+        self.s = Series(Index([f"i-{i}" for i in range(N)], dtype=object))
         repeat = {"int": 1, "array": np.random.randint(1, 3, N)}
         self.values = repeat[repeats]
 
@@ -190,20 +183,26 @@ class Repeat:
 
 
 class Cat:
-
     params = ([0, 3], [None, ","], [None, "-"], [0.0, 0.001, 0.15])
     param_names = ["other_cols", "sep", "na_rep", "na_frac"]
 
     def setup(self, other_cols, sep, na_rep, na_frac):
-        N = 10 ** 5
+        N = 10**5
         mask_gen = lambda: np.random.choice([True, False], N, p=[1 - na_frac, na_frac])
-        self.s = Series(tm.makeStringIndex(N)).where(mask_gen())
+        self.s = Series(Index([f"i-{i}" for i in range(N)], dtype=object)).where(
+            mask_gen()
+        )
         if other_cols == 0:
             # str.cat self-concatenates only for others=None
             self.others = None
         else:
             self.others = DataFrame(
-                {i: tm.makeStringIndex(N).where(mask_gen()) for i in range(other_cols)}
+                {
+                    i: Index([f"i-{i}" for i in range(N)], dtype=object).where(
+                        mask_gen()
+                    )
+                    for i in range(other_cols)
+                }
             )
 
     def time_cat(self, other_cols, sep, na_rep, na_frac):
@@ -215,7 +214,6 @@ class Cat:
 
 
 class Contains(Dtypes):
-
     params = (Dtypes.params, [True, False])
     param_names = ["dtype", "regex"]
 
@@ -227,7 +225,6 @@ class Contains(Dtypes):
 
 
 class Split(Dtypes):
-
     params = (Dtypes.params, [True, False])
     param_names = ["dtype", "expand"]
 
@@ -243,7 +240,6 @@ class Split(Dtypes):
 
 
 class Extract(Dtypes):
-
     params = (Dtypes.params, [True, False])
     param_names = ["dtype", "expand"]
 
@@ -258,7 +254,8 @@ class Extract(Dtypes):
 class Dummies(Dtypes):
     def setup(self, dtype):
         super().setup(dtype)
-        self.s = self.s.str.join("|")
+        N = len(self.s) // 5
+        self.s = self.s[:N].str.join("|")
 
     def time_get_dummies(self, dtype):
         self.s.str.get_dummies("|")
@@ -266,7 +263,7 @@ class Dummies(Dtypes):
 
 class Encode:
     def setup(self):
-        self.ser = Series(tm.makeUnicodeIndex())
+        self.ser = Series(Index([f"i-{i}" for i in range(10_000)], dtype=object))
 
     def time_encode_decode(self):
         self.ser.str.encode("utf-8").str.decode("utf-8")
@@ -285,3 +282,18 @@ class Iter(Dtypes):
     def time_iter(self, dtype):
         for i in self.s:
             pass
+
+
+class StringArrayConstruction:
+    def setup(self):
+        self.series_arr = np.array([str(i) * 10 for i in range(10**5)], dtype=object)
+        self.series_arr_nan = np.concatenate([self.series_arr, np.array([NA] * 1000)])
+
+    def time_string_array_construction(self):
+        StringArray(self.series_arr)
+
+    def time_string_array_with_nan_construction(self):
+        StringArray(self.series_arr_nan)
+
+    def peakmem_stringarray_construction(self):
+        StringArray(self.series_arr)

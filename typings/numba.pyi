@@ -12,9 +12,7 @@ from pandas._typing import F
 
 def __getattr__(name: str) -> Any: ...  # incomplete
 @overload
-def jit(
-    signature_or_function: F = ...,
-) -> F: ...
+def jit(signature_or_function: F) -> F: ...
 @overload
 def jit(
     signature_or_function: str
@@ -40,3 +38,4 @@ def jit(
 ) -> Callable[[F], F]: ...
 
 njit = jit
+generated_jit = jit

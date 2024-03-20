@@ -5,24 +5,16 @@ from operator import (
 )
 
 from cpython.datetime cimport (
-    PyDateTime_IMPORT,
     PyDelta_Check,
+    import_datetime,
 )
 
-PyDateTime_IMPORT
+import_datetime()
 
-from cpython.object cimport (
-    Py_EQ,
-    Py_GE,
-    Py_GT,
-    Py_LE,
-    Py_LT,
-    Py_NE,
-    PyObject_RichCompare,
-)
+cimport cython
+from cpython.object cimport PyObject_RichCompare
+from cython cimport Py_ssize_t
 
-import cython
-from cython import Py_ssize_t
 import numpy as np
 
 cimport numpy as cnp
@@ -30,9 +22,7 @@ from numpy cimport (
     NPY_QUICKSORT,
     PyArray_ArgSort,
     PyArray_Take,
-    float32_t,
     float64_t,
-    int32_t,
     int64_t,
     ndarray,
     uint64_t,
@@ -49,10 +39,9 @@ from pandas._libs.tslibs.timezones cimport tz_compare
 from pandas._libs.tslibs.util cimport (
     is_float_object,
     is_integer_object,
-    is_timedelta64_object,
 )
 
-VALID_CLOSED = frozenset(['left', 'right', 'both', 'neither'])
+VALID_CLOSED = frozenset(["left", "right", "both", "neither"])
 
 
 cdef class IntervalMixin:
@@ -68,8 +57,23 @@ cdef class IntervalMixin:
         -------
         bool
             True if the Interval is closed on the left-side.
+
+        See Also
+        --------
+        Interval.closed_right : Check if the interval is closed on the right side.
+        Interval.open_left : Boolean inverse of closed_left.
+
+        Examples
+        --------
+        >>> iv = pd.Interval(0, 5, closed='left')
+        >>> iv.closed_left
+        True
+
+        >>> iv = pd.Interval(0, 5, closed='right')
+        >>> iv.closed_left
+        False
         """
-        return self.closed in ('left', 'both')
+        return self.closed in ("left", "both")
 
     @property
     def closed_right(self):
@@ -82,8 +86,23 @@ cdef class IntervalMixin:
         -------
         bool
             True if the Interval is closed on the left-side.
+
+        See Also
+        --------
+        Interval.closed_left : Check if the interval is closed on the left side.
+        Interval.open_right : Boolean inverse of closed_right.
+
+        Examples
+        --------
+        >>> iv = pd.Interval(0, 5, closed='both')
+        >>> iv.closed_right
+        True
+
+        >>> iv = pd.Interval(0, 5, closed='left')
+        >>> iv.closed_right
+        False
         """
-        return self.closed in ('right', 'both')
+        return self.closed in ("right", "both")
 
     @property
     def open_left(self):
@@ -95,7 +114,22 @@ cdef class IntervalMixin:
         Returns
         -------
         bool
-            True if the Interval is closed on the left-side.
+            True if the Interval is not closed on the left-side.
+
+        See Also
+        --------
+        Interval.open_right : Check if the interval is open on the right side.
+        Interval.closed_left : Boolean inverse of open_left.
+
+        Examples
+        --------
+        >>> iv = pd.Interval(0, 5, closed='neither')
+        >>> iv.open_left
+        True
+
+        >>> iv = pd.Interval(0, 5, closed='both')
+        >>> iv.open_left
+        False
         """
         return not self.closed_left
 
@@ -109,7 +143,22 @@ cdef class IntervalMixin:
         Returns
         -------
         bool
-            True if the Interval is closed on the left-side.
+            True if the Interval is not closed on the left-side.
+
+        See Also
+        --------
+        Interval.open_left : Check if the interval is open on the left side.
+        Interval.closed_right : Boolean inverse of open_right.
+
+        Examples
+        --------
+        >>> iv = pd.Interval(0, 5, closed='left')
+        >>> iv.open_right
+        True
+
+        >>> iv = pd.Interval(0, 5)
+        >>> iv.open_right
+        False
         """
         return not self.closed_right
 
@@ -117,6 +166,12 @@ cdef class IntervalMixin:
     def mid(self):
         """
         Return the midpoint of the Interval.
+
+        Examples
+        --------
+        >>> iv = pd.Interval(0, 5)
+        >>> iv.mid
+        2.5
         """
         try:
             return 0.5 * (self.left + self.right)
@@ -128,6 +183,18 @@ cdef class IntervalMixin:
     def length(self):
         """
         Return the length of the Interval.
+
+        See Also
+        --------
+        Interval.is_empty : Indicates if an interval contains no points.
+
+        Examples
+        --------
+        >>> interval = pd.Interval(left=1, right=2, closed='left')
+        >>> interval
+        Interval(1, 2, closed='left')
+        >>> interval.length
+        1
         """
         return self.right - self.left
 
@@ -136,8 +203,6 @@ cdef class IntervalMixin:
         """
         Indicates if an interval is empty, meaning it contains no points.
 
-        .. versionadded:: 0.25.0
-
         Returns
         -------
         bool or ndarray
@@ -145,6 +210,10 @@ cdef class IntervalMixin:
             boolean ``ndarray`` positionally indicating if an ``Interval`` in
             an :class:`~arrays.IntervalArray` or :class:`IntervalIndex` is
             empty.
+
+        See Also
+        --------
+        Interval.length : Return the length of the Interval.
 
         Examples
         --------
@@ -182,9 +251,9 @@ cdef class IntervalMixin:
         >>> pd.IntervalIndex(ivs).is_empty
         array([ True, False])
         """
-        return (self.right == self.left) & (self.closed != 'both')
+        return (self.right == self.left) & (self.closed != "both")
 
-    def _check_closed_matches(self, other, name='other'):
+    def _check_closed_matches(self, other, name="other"):
         """
         Check if the closed attribute of `other` matches.
 
@@ -207,9 +276,9 @@ cdef class IntervalMixin:
 
 
 cdef bint _interval_like(other):
-    return (hasattr(other, 'left')
-            and hasattr(other, 'right')
-            and hasattr(other, 'closed'))
+    return (hasattr(other, "left")
+            and hasattr(other, "right")
+            and hasattr(other, "closed"))
 
 
 cdef class Interval(IntervalMixin):
@@ -259,9 +328,11 @@ cdef class Interval(IntervalMixin):
     >>> iv
     Interval(0, 5, closed='right')
 
-    You can check if an element belongs to it
+    You can check if an element belongs to it, or if it contains another interval:
 
     >>> 2.5 in iv
+    True
+    >>> pd.Interval(left=2, right=5, closed='both') in iv
     True
 
     You can test the bounds (``closed='right'``, so ``0 < x <= 5``):
@@ -305,20 +376,45 @@ cdef class Interval(IntervalMixin):
     cdef readonly object left
     """
     Left bound for the interval.
+
+    Examples
+    --------
+    >>> interval = pd.Interval(left=1, right=2, closed='left')
+    >>> interval
+    Interval(1, 2, closed='left')
+    >>> interval.left
+    1
     """
 
     cdef readonly object right
     """
     Right bound for the interval.
+
+    Examples
+    --------
+    >>> interval = pd.Interval(left=1, right=2, closed='left')
+    >>> interval
+    Interval(1, 2, closed='left')
+    >>> interval.right
+    2
     """
 
     cdef readonly str closed
     """
-    Whether the interval is closed on the left-side, right-side, both or
-    neither.
+    String describing the inclusive side the intervals.
+
+    Either ``left``, ``right``, ``both`` or ``neither``.
+
+    Examples
+    --------
+    >>> interval = pd.Interval(left=1, right=2, closed='left')
+    >>> interval
+    Interval(1, 2, closed='left')
+    >>> interval.closed
+    'left'
     """
 
-    def __init__(self, left, right, str closed='right'):
+    def __init__(self, left, right, str closed="right"):
         # note: it is faster to just do these checks than to use a special
         # constructor (__cinit__/__new__) to avoid them
 
@@ -350,7 +446,17 @@ cdef class Interval(IntervalMixin):
 
     def __contains__(self, key) -> bool:
         if _interval_like(key):
-            raise TypeError("__contains__ not defined for two intervals")
+            key_closed_left = key.closed in ("left", "both")
+            key_closed_right = key.closed in ("right", "both")
+            if self.open_left and key_closed_left:
+                left_contained = self.left < key.left
+            else:
+                left_contained = self.left <= key.left
+            if self.open_right and key_closed_right:
+                right_contained = key.right < self.right
+            else:
+                right_contained = key.right <= self.right
+            return left_contained and right_contained
         return ((self.left < key if self.open_left else self.left <= key) and
                 (key < self.right if self.open_right else key <= self.right))
 
@@ -371,54 +477,40 @@ cdef class Interval(IntervalMixin):
         args = (self.left, self.right, self.closed)
         return (type(self), args)
 
-    def _repr_base(self):
-        left = self.left
-        right = self.right
-
-        # TODO: need more general formatting methodology here
-        if isinstance(left, _Timestamp) and isinstance(right, _Timestamp):
-            left = left._short_repr
-            right = right._short_repr
-
-        return left, right
-
     def __repr__(self) -> str:
-
-        left, right = self._repr_base()
+        disp = str if isinstance(self.left, (np.generic, _Timestamp)) else repr
         name = type(self).__name__
-        repr_str = f'{name}({repr(left)}, {repr(right)}, closed={repr(self.closed)})'
+        repr_str = f"{name}({disp(self.left)}, {disp(self.right)}, closed={repr(self.closed)})"  # noqa: E501
         return repr_str
 
     def __str__(self) -> str:
-
-        left, right = self._repr_base()
-        start_symbol = '[' if self.closed_left else '('
-        end_symbol = ']' if self.closed_right else ')'
-        return f'{start_symbol}{left}, {right}{end_symbol}'
+        start_symbol = "[" if self.closed_left else "("
+        end_symbol = "]" if self.closed_right else ")"
+        return f"{start_symbol}{self.left}, {self.right}{end_symbol}"
 
     def __add__(self, y):
         if (
             isinstance(y, numbers.Number)
             or PyDelta_Check(y)
-            or is_timedelta64_object(y)
+            or cnp.is_timedelta64_object(y)
         ):
             return Interval(self.left + y, self.right + y, closed=self.closed)
-        elif (
-            isinstance(y, Interval)
-            and (
-                isinstance(self, numbers.Number)
-                or PyDelta_Check(self)
-                or is_timedelta64_object(self)
-            )
+        return NotImplemented
+
+    def __radd__(self, other):
+        if (
+                isinstance(other, numbers.Number)
+                or PyDelta_Check(other)
+                or cnp.is_timedelta64_object(other)
         ):
-            return Interval(y.left + self, y.right + self, closed=y.closed)
+            return Interval(self.left + other, self.right + other, closed=self.closed)
         return NotImplemented
 
     def __sub__(self, y):
         if (
             isinstance(y, numbers.Number)
             or PyDelta_Check(y)
-            or is_timedelta64_object(y)
+            or cnp.is_timedelta64_object(y)
         ):
             return Interval(self.left - y, self.right - y, closed=self.closed)
         return NotImplemented
@@ -426,8 +518,11 @@ cdef class Interval(IntervalMixin):
     def __mul__(self, y):
         if isinstance(y, numbers.Number):
             return Interval(self.left * y, self.right * y, closed=self.closed)
-        elif isinstance(y, Interval) and isinstance(self, numbers.Number):
-            return Interval(y.left * self, y.right * self, closed=y.closed)
+        return NotImplemented
+
+    def __rmul__(self, other):
+        if isinstance(other, numbers.Number):
+            return Interval(self.left * other, self.right * other, closed=self.closed)
         return NotImplemented
 
     def __truediv__(self, y):
@@ -516,10 +611,10 @@ def intervals_to_interval_bounds(ndarray intervals, bint validate_closed=True):
 
     Returns
     -------
-    tuple of tuples
-        left : (ndarray, object, array)
-        right : (ndarray, object, array)
-        closed: str
+    tuple of
+        left : ndarray
+        right : ndarray
+        closed: IntervalClosedType
     """
     cdef:
         object closed = None, interval

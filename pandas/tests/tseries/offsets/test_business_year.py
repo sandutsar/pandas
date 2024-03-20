@@ -3,12 +3,14 @@ Tests for the following offsets:
 - BYearBegin
 - BYearEnd
 """
+
+from __future__ import annotations
+
 from datetime import datetime
 
 import pytest
 
 from pandas.tests.tseries.offsets.common import (
-    Base,
     assert_is_on_offset,
     assert_offset_equal,
 )
@@ -19,9 +21,7 @@ from pandas.tseries.offsets import (
 )
 
 
-class TestBYearBegin(Base):
-    _offset = BYearBegin
-
+class TestBYearBegin:
     def test_misspecified(self):
         msg = "Month must go from 1 to 12"
         with pytest.raises(ValueError, match=msg):
@@ -92,9 +92,7 @@ class TestBYearBegin(Base):
             assert_offset_equal(offset, base, expected)
 
 
-class TestBYearEnd(Base):
-    _offset = BYearEnd
-
+class TestBYearEnd:
     offset_cases = []
     offset_cases.append(
         (
@@ -165,9 +163,7 @@ class TestBYearEnd(Base):
         assert_is_on_offset(offset, dt, expected)
 
 
-class TestBYearEndLagged(Base):
-    _offset = BYearEnd
-
+class TestBYearEndLagged:
     def test_bad_month_fail(self):
         msg = "Month must go from 1 to 12"
         with pytest.raises(ValueError, match=msg):

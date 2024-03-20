@@ -1,17 +1,25 @@
 """
 Boilerplate functions used in defining binary operations.
 """
+
+from __future__ import annotations
+
 from functools import wraps
-from typing import Callable
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+)
 
 from pandas._libs.lib import item_from_zerodim
-from pandas._typing import F
+from pandas._libs.missing import is_matching_na
 
 from pandas.core.dtypes.generic import (
-    ABCDataFrame,
     ABCIndex,
     ABCSeries,
 )
+
+if TYPE_CHECKING:
+    from pandas._typing import F
 
 
 def unpack_zerodim_and_defer(name: str) -> Callable[[F], F]:
@@ -33,7 +41,7 @@ def unpack_zerodim_and_defer(name: str) -> Callable[[F], F]:
     return wrapper
 
 
-def _unpack_zerodim_and_defer(method, name: str):
+def _unpack_zerodim_and_defer(method: F, name: str) -> F:
     """
     Boilerplate for pandas conventions in arithmetic and comparison methods.
 
@@ -49,26 +57,28 @@ def _unpack_zerodim_and_defer(method, name: str):
     -------
     method
     """
-    is_cmp = name.strip("__") in {"eq", "ne", "lt", "le", "gt", "ge"}
+    stripped_name = name.removeprefix("__").removesuffix("__")
+    is_cmp = stripped_name in {"eq", "ne", "lt", "le", "gt", "ge"}
 
     @wraps(method)
     def new_method(self, other):
-
         if is_cmp and isinstance(self, ABCIndex) and isinstance(other, ABCSeries):
             # For comparison ops, Index does *not* defer to Series
             pass
         else:
-            for cls in [ABCDataFrame, ABCSeries, ABCIndex]:
-                if isinstance(self, cls):
-                    break
-                if isinstance(other, cls):
+            prio = getattr(other, "__pandas_priority__", None)
+            if prio is not None:
+                if prio > self.__pandas_priority__:
+                    # e.g. other is DataFrame while self is Index/Series/EA
                     return NotImplemented
 
         other = item_from_zerodim(other)
 
         return method(self, other)
 
-    return new_method
+    # error: Incompatible return value type (got "Callable[[Any, Any], Any]",
+    # expected "F")
+    return new_method  # type: ignore[return-value]
 
 
 def get_op_result_name(left, right):
@@ -116,10 +126,21 @@ def _maybe_match_name(a, b):
     a_has = hasattr(a, "name")
     b_has = hasattr(b, "name")
     if a_has and b_has:
-        if a.name == b.name:
-            return a.name
-        else:
-            # TODO: what if they both have np.nan for their names?
+        try:
+            if a.name == b.name:
+                return a.name
+            elif is_matching_na(a.name, b.name):
+                # e.g. both are np.nan
+                return a.name
+            else:
+                return None
+        except TypeError:
+            # pd.NA
+            if is_matching_na(a.name, b.name):
+                return a.name
+            return None
+        except ValueError:
+            # e.g. np.int64(1) vs (np.int64(1), np.int64(2))
             return None
     elif a_has:
         return a.name

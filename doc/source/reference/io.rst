@@ -40,6 +40,9 @@ Excel
 
    read_excel
    DataFrame.to_excel
+   ExcelFile
+   ExcelFile.book
+   ExcelFile.sheet_names
    ExcelFile.parse
 
 .. currentmodule:: pandas.io.formats.style
@@ -53,11 +56,10 @@ Excel
 
 .. autosummary::
    :toctree: api/
-   :template: autosummary/class_without_autosummary.rst
 
    ExcelWriter
 
-.. currentmodule:: pandas.io.json
+.. currentmodule:: pandas
 
 JSON
 ~~~~
@@ -65,7 +67,10 @@ JSON
    :toctree: api/
 
    read_json
-   to_json
+   json_normalize
+   DataFrame.to_json
+
+.. currentmodule:: pandas.io.json
 
 .. autosummary::
    :toctree: api/
@@ -132,7 +137,7 @@ HDFStore: PyTables (HDF5)
 
 .. warning::
 
-   One can store a subclass of ``DataFrame`` or ``Series`` to HDF5,
+   One can store a subclass of :class:`DataFrame` or :class:`Series` to HDF5,
    but the type of the subclass is lost upon storing.
 
 Feather
@@ -157,6 +162,7 @@ ORC
    :toctree: api/
 
    read_orc
+   DataFrame.to_orc
 
 SAS
 ~~~
@@ -181,13 +187,6 @@ SQL
    read_sql_query
    read_sql
    DataFrame.to_sql
-
-Google BigQuery
-~~~~~~~~~~~~~~~
-.. autosummary::
-   :toctree: api/
-
-   read_gbq
 
 STATA
 ~~~~~

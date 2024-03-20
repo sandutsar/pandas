@@ -2,6 +2,7 @@
 Series.item method, mainly testing that we get python scalars as opposed to
 numpy scalars.
 """
+
 import pytest
 
 from pandas import (
@@ -55,5 +56,5 @@ class TestItem:
 
         # Case where ser[0] would not work
         ser = Series(dti, index=[5, 6])
-        val = ser[:1].item()
+        val = ser.iloc[:1].item()
         assert val == dti[0]
